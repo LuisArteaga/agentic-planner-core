@@ -5,16 +5,11 @@ import datetime
 import threading
 from pathlib import Path
 
-# Try importing opentelemetry, fallback to dummy classes if not installed
-try:
-    from opentelemetry import trace
-    from opentelemetry.sdk.trace import TracerProvider, SpanProcessor
-    from opentelemetry.sdk.trace.export import SimpleSpanProcessor, BatchSpanProcessor
-    from opentelemetry.sdk.resources import Resource
-    from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-    HAS_OTEL = True
-except ImportError:
-    HAS_OTEL = False
+from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider, SpanProcessor
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor, BatchSpanProcessor
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 
 # Literal keys from OpenInference Semantic Conventions
 OPENINFERENCE_SPAN_KIND = "openinference.span.kind"
@@ -48,47 +43,10 @@ def configure_otlp_endpoint() -> str:
     return endpoint
 
 
-# Dummy definitions for graceful failover when OTel is not installed
-class DummySpan:
-    def __enter__(self):
-        return self
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        pass
-    def set_attribute(self, key, value):
-        pass
-    def record_exception(self, exception):
-        pass
-    def set_status(self, status):
-        pass
-
-class DummyTracer:
-    def start_as_current_span(self, name, *args, **kwargs):
-        return DummySpan()
-
-class DummyStatusCode:
-    OK = 0
-    ERROR = 1
-
-class DummyStatus:
-    def __init__(self, code, message=""):
-        self.code = code
-        self.message = message
-
-class DummyTraceModule:
-    StatusCode = DummyStatusCode
-    def Status(self, code, message=""):
-        return DummyStatus(code, message)
-
-if not HAS_OTEL:
-    # Export a dummy trace object that matches opentelemetry API used in review.py
-    trace = DummyTraceModule()
-
 def get_tracer():
-    """Returns the central tracer instance, or a dummy tracer if OTel is missing."""
-    if HAS_OTEL:
-        return trace.get_tracer("agentic-planner-core-review")
-    else:
-        return DummyTracer()
+    """Returns the central tracer instance."""
+    return trace.get_tracer("agentic-planner-core-review")
+
 
 def get_agent_logs_dir() -> str:
     """Resolve and return the path to the agent logs directory, ensuring it exists and is writable."""
@@ -121,64 +79,57 @@ def get_agent_logs_dir() -> str:
     return tmp_logs
 
 
+class LocalJSONLFileSpanProcessor(SpanProcessor):
+    """A custom OpenTelemetry SpanProcessor that serializes finished spans to local JSONL files."""
+    def __init__(self):
+        self._lock = threading.Lock()
 
-if HAS_OTEL:
-    class LocalJSONLFileSpanProcessor(SpanProcessor):
-        """A custom OpenTelemetry SpanProcessor that serializes finished spans to local JSONL files."""
-        def __init__(self):
-            self._lock = threading.Lock()
+    def on_start(self, span, parent_context=None):
+        pass
 
-        def on_start(self, span, parent_context=None):
-            pass
+    def on_end(self, span):
+        try:
+            status_code = span.status.status_code.value if hasattr(span.status.status_code, "value") else int(span.status.status_code)
+            status_description = span.status.description or ""
+            
+            span_dict = {
+                "trace_id": f"{span.context.trace_id:032x}",
+                "span_id": f"{span.context.span_id:016x}",
+                "parent_span_id": f"{span.parent.span_id:016x}" if span.parent else "",
+                "name": span.name,
+                "kind": span.kind.value if hasattr(span.kind, "value") else int(span.kind),
+                "start_time_unix_nano": span.start_time,
+                "end_time_unix_nano": span.end_time,
+                "attributes": dict(span.attributes or {}),
+                "status_code": status_code,
+                "status_message": status_description,
+                "resource_attributes": dict(span.resource.attributes or {}),
+                "scope_name": span.instrumentation_scope.name if span.instrumentation_scope else "unknown",
+            }
+            
+            # Write to dated file
+            today_str = datetime.date.today().isoformat()
+            logs_dir = get_agent_logs_dir()
+            log_file_path = os.path.join(logs_dir, f"otel_traces_{today_str}.jsonl")
+            
+            with self._lock:
+                 with open(log_file_path, "a", encoding="utf-8") as f:
+                    f.write(json.dumps(span_dict) + "\n")
+                    f.flush()
+        except Exception as e:
+            sys.stderr.write(f"[WARN] LocalJSONLFileSpanProcessor failed to write span: {e}\n")
 
-        def on_end(self, span):
-            try:
-                status_code = span.status.status_code.value if hasattr(span.status.status_code, "value") else int(span.status.status_code)
-                status_description = span.status.description or ""
-                
-                span_dict = {
-                    "trace_id": f"{span.context.trace_id:032x}",
-                    "span_id": f"{span.context.span_id:016x}",
-                    "parent_span_id": f"{span.parent.span_id:016x}" if span.parent else "",
-                    "name": span.name,
-                    "kind": span.kind.value if hasattr(span.kind, "value") else int(span.kind),
-                    "start_time_unix_nano": span.start_time,
-                    "end_time_unix_nano": span.end_time,
-                    "attributes": dict(span.attributes or {}),
-                    "status_code": status_code,
-                    "status_message": status_description,
-                    "resource_attributes": dict(span.resource.attributes or {}),
-                    "scope_name": span.instrumentation_scope.name if span.instrumentation_scope else "unknown",
-                }
-                
-                # Write to dated file
-                today_str = datetime.date.today().isoformat()
-                logs_dir = get_agent_logs_dir()
-                log_file_path = os.path.join(logs_dir, f"otel_traces_{today_str}.jsonl")
-                
-                with self._lock:
-                     with open(log_file_path, "a", encoding="utf-8") as f:
-                        f.write(json.dumps(span_dict) + "\n")
-                        f.flush()
-            except Exception as e:
-                sys.stderr.write(f"[WARN] LocalJSONLFileSpanProcessor failed to write span: {e}\n")
+    def shutdown(self):
+        pass
 
-        def shutdown(self):
-            pass
-
-        def force_flush(self, timeout_millis=30000):
-            return True
+    def force_flush(self, timeout_millis=30000):
+        return True
 
 
 def init_telemetry(in_memory_exporter=None):
     """
-    Initializes OpenTelemetry and OpenInference tracer provider if installed.
-    Runs silently as a no-op otherwise.
+    Initializes OpenTelemetry and OpenInference tracer provider.
     """
-    if not HAS_OTEL:
-        sys.stderr.write("[INFO] OpenTelemetry is not installed. Running in no-op tracing mode.\n")
-        return
-
     # If a real TracerProvider is already set (e.g., in repeated test setUps),
     # attach the new in-memory exporter to it instead of trying to replace it.
     current_provider = trace.get_tracer_provider()
@@ -229,4 +180,3 @@ def init_telemetry(in_memory_exporter=None):
             sys.stderr.write(f"[WARN] Failed to initialize OTLP exporter: {e}\n")
             
     trace.set_tracer_provider(provider)
-

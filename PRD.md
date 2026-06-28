@@ -54,8 +54,8 @@ agentic-planner-core/
 │   ├── phase1-aider.md                 # Setup guide for Aider
 │   └── phase1-opencode.md              # Setup guide for OpenCode
 ├── scripts/
-│   ├── setup-aider.sh                  # Setup script for Aider skills
-│   ├── setup-opencode.sh               # Setup script for OpenCode skills
+│   ├── review.py                       # LLM PR Review Judge implementation
+│   ├── review.sh                       # Wrapper to run review.py with OTel tracing
 │   └── telemetry.py                    # Custom OTel tracing module
 ├── config/
 │   ├── grading_rubric.md               # Critic grading criteria
