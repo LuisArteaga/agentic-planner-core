@@ -6,6 +6,7 @@ import datetime
 import threading
 from pathlib import Path
 
+from contextlib import contextmanager
 from opentelemetry import trace, context, baggage
 from opentelemetry.sdk.trace import TracerProvider, SpanProcessor
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor, BatchSpanProcessor
@@ -71,6 +72,7 @@ def get_agent_logs_dir() -> str:
     local_logs = os.path.join(project_root, ".agent_logs")
     try:
         os.makedirs(local_logs, exist_ok=True)
+        os.chmod(local_logs, 0o700)
         if os.access(local_logs, os.W_OK):
             return local_logs
     except Exception:
@@ -151,10 +153,12 @@ class LocalJSONLFileSpanProcessor(SpanProcessor):
                 logs_dir, f"otel_traces_{today_str}.jsonl"
             )
 
+            # Securely open the log file with 0o600 permissions
             with self._lock:
-                with open(log_file_path, "a", encoding="utf-8") as f:
+                flags = os.O_CREAT | os.O_WRONLY | os.O_APPEND
+                fd = os.open(log_file_path, flags, 0o600)
+                with os.fdopen(fd, "a", encoding="utf-8") as f:
                     f.write(json.dumps(span_dict) + "\n")
-                    f.flush()
         except Exception as e:
             sys.stderr.write(
                 f"[WARN] LocalJSONLFileSpanProcessor failed to write span: {e}\n"
@@ -366,3 +370,20 @@ def end_orchestrator_phase(
     span.end()
 
     context.detach(token)
+
+
+@contextmanager
+def orchestrator_phase(phase_name):
+    """Context manager to ensure phase spans are always safely started and ended,
+    guaranteeing complete context isolation even during exceptions.
+    """
+    start_orchestrator_phase(phase_name)
+    try:
+        yield
+    except Exception:
+        # End the phase with error code
+        end_orchestrator_phase(exit_code=1)
+        raise
+    else:
+        # End the phase with success code
+        end_orchestrator_phase(exit_code=0)

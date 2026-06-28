@@ -156,3 +156,34 @@ class TelemetryTests(unittest.TestCase):
                     data["attributes"].get("langfuse.session.id"), "sess-B"
                 )
                 self.assertEqual(data["attributes"].get("langfuse.user.id"), "user-B")
+
+    def test_orchestrator_phase_context_manager_and_permissions(self):
+        """Verify that orchestrator_phase context manager cleans up and creates files with secure permissions."""
+        import stat
+
+        init_telemetry()
+
+        # Verify directory permissions of local_logs (our temp_dir acts as local logs)
+        dir_mode = os.stat(self.temp_dir).st_mode
+        self.assertEqual(stat.S_IMODE(dir_mode), 0o700)
+
+        # Run under loop and phase context manager
+        start_orchestrator_loop(issue_number=99)
+        from scripts.telemetry import orchestrator_phase
+
+        with orchestrator_phase("ctx_mgr_phase"):
+            pass
+
+        end_orchestrator_loop(exit_code=0)
+
+        # Find the log file
+        files = os.listdir(self.temp_dir)
+        otel_log_files = [
+            f for f in files if f.startswith("otel_traces_") and f.endswith(".jsonl")
+        ]
+        self.assertTrue(len(otel_log_files) >= 1)
+        log_file_path = os.path.join(self.temp_dir, otel_log_files[0])
+
+        # Verify file permissions are 0o600
+        file_mode = os.stat(log_file_path).st_mode
+        self.assertEqual(stat.S_IMODE(file_mode), 0o600)
