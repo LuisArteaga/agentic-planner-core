@@ -15,24 +15,24 @@ Dieses Dokument definiert die fachliche Terminologie für diesen Kontext. Es dar
 * **Synonyme / Abzugrenzende Begriffe**: Nicht zu verwechseln mit dem Programmdatenbestand (Repository), in dem der Code des Planners selbst lebt.
 
 ### Entwurfs-Aufgabe (Draft Issue)
-* **Definition**: Eine vorläufige, temporäre Arbeitskopie einer Aufgabenspezifikation, die ein einzelnes Arbeitspaket beschreibt. Sie existiert nur während der Planungs- und Verfeinerungsphase und wird nicht im zentralen Versionsverlauf des Ziel-Repositories abgelegt.
-* **Geschäftsregeln**: Jede Entwurfs-Aufgabe durchläuft einen Verfeinerungsprozess (Recherche, Architekturabgleich, Umschreiben), bevor sie als offizielle Aufgabe freigegeben wird. Nach der Freigabe wird die temporäre Arbeitskopie entfernt.
+* **Definition**: Eine vorläufige, temporäre Arbeitskopie einer Aufgabenspezifikation, die ein einzelnes Arbeitspaket beschreibt. Sie wird in der interaktiven Planungsphase erstellt und in der autonomen Verfeinerungsphase veredelt, ohne im zentralen Versionsverlauf des Ziel-Repositories abgelegt zu werden.
+* **Geschäftsregeln**: Jede Entwurfs-Aufgabe durchläuft die autonome Verfeinerungsphase (Recherche, Architekturabgleich, Umschreiben), bevor sie als offizielle Aufgabe freigegeben wird. Nach der Freigabe wird die temporäre Arbeitskopie entfernt.
 * **Synonyme / Abzugrenzende Begriffe**: Nicht zu verwechseln mit einer freigegebenen oder veröffentlichten Aufgabe.
 
-### Verfeinerungs-Prozess (Refinement Process)
-* **Definition**: Der isolierte Arbeitsablauf zur inhaltlichen Anreicherung und Validierung einer einzelnen Entwurfs-Aufgabe. Er beinhaltet die gezielte Recherche, die Prüfung der Vereinbarkeit mit bestehenden Architekturentscheidungen sowie die Bewertung von Umsetzungsoptionen.
-* **Geschäftsregeln**: Die Verfeinerung einer Aufgabe läuft kontextuell isoliert ab, damit Rechercheergebnisse einer Aufgabe nicht den Inhalt oder Kontext anderer Aufgaben beeinflussen.
-* **Synonyme / Abzugrenzende Begriffe**: Nicht zu verwechseln mit dem übergeordneten Planungsprozess, welcher die Iteration über alle Entwurfs-Aufgaben steuert.
+### Interaktive Planungsphase (Interactive Planning Phase)
+* **Definition**: Der interaktive Prozess mit menschlicher Beteiligung (HITL), in dem Anforderungen definiert (PRD, Glossary, ADRs) und in vorläufige Entwurfs-Aufgaben (Draft Issues) aufgeteilt werden.
+* **Geschäftsregeln**: Wird durch den Benutzer in Kombination mit interaktiven Entwicklungs-Tools (z. B. Aider, OpenCode) und Prompt-Skills ausgeführt. Die Phase endet, sobald die Entwurfs-Aufgaben auf der Festplatte abgelegt sind.
+* **Synonyme / Abzugrenzende Begriffe**: Umfasst die Begriffe *PRD-Erstellung* und *Aufgabenspaltung (Issue Splitting)*.
+
+### Autonome Verfeinerungsphase (Autonomous Refinement Phase)
+* **Definition**: Der vollautomatische Prozess (ohne HITL), bei dem jede Entwurfs-Aufgabe einzeln durch gezielte Recherche, Prüfung gegen bestehende Architekturentscheidungen (ADRs) sowie Lösungsbewertung verfeinert und auf GitHub veröffentlicht wird.
+* **Geschäftsregeln**: Die Verfeinerung jeder einzelnen Entwurfs-Aufgabe läuft kontextuell isoliert ab, damit Rechercheergebnisse einer Aufgabe nicht den Inhalt oder Kontext anderer Aufgaben beeinflussen. Die Phase läuft als zusammenhängender Batch-Prozess über die CLI ab.
+* **Synonyme / Abzugrenzende Begriffe**: Nicht zu verwechseln mit der interaktiven Planungsphase. Beinhaltet den *Verfeinerungs-Prozess (Refinement Process)* für die einzelnen Entwurfs-Aufgaben.
 
 ### Lösungsbewertung (Solution Grading)
 * **Definition**: Das strukturierte Prüfverfahren zur Bewertung verschiedener technischer Lösungsansätze für eine Aufgabe. Ein unabhängiger Prüfer bewertet vorgeschlagene Optionen gegen bestehende Richtlinien und Architekturentscheidungen.
 * **Geschäftsregeln**: Die Bewertung erfolgt vollautomatisch anhand einer vorgegebenen Bewertungsmatrix. Die Entscheidung über den gewählten Lösungsansatz wird begründet und protokolliert.
 * **Synonyme / Abzugrenzende Begriffe**: Folgt dem Generator-Prüfer-Pattern. Nicht zu verwechseln mit dem manuellen Review-Prozess durch Personen.
-
-### Aufgabenspaltung (Issue Splitting)
-* **Definition**: Die Zerlegung eines fachlichen Gesamtanforderungsdokuments in kleinere, in sich geschlossene und unabhängig voneinander umsetzbare Entwurfs-Aufgaben.
-* **Geschäftsregeln**: Die Spaltung erfolgt auf Basis von fachlich vertikalen Schnitten (Tracer-Bullet Vertical Slices) und beinhaltet eine Rückkopplungsschleife zur Abstimmung der Aufgabengranularität.
-* **Synonyme / Abzugrenzende Begriffe**: Abzugrenzen von der inhaltlichen Verfeinerung, welche erst nach der Spaltung für jedes einzelne Element stattfindet.
 
 ### Quellen-Konfiguration (Source Configuration)
 * **Definition**: Die Vorgabe von vertrauenswürdigen Informationsquellen und Rahmenbedingungen für die automatisierte Recherche. Sie enthält einen Sicherheitsmodus (Strict-Modus), um die Recherche streng auf die freigegebenen Quellen zu beschränken.
