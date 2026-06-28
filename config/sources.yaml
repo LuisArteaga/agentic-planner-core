@@ -1,0 +1,7 @@
+strict: true
+repositories:
+  - langchain-ai/langgraph
+  - SWE-agent/SWE-agent
+domains:
+  - arxiv.org
+  - dl.acm.org

@@ -36,5 +36,7 @@ Dieses Dokument definiert die fachliche Terminologie für diesen Kontext. Es dar
 
 ### Quellen-Konfiguration (Source Configuration)
 * **Definition**: Die Vorgabe von vertrauenswürdigen Informationsquellen und Rahmenbedingungen für die automatisierte Recherche. Sie enthält einen Sicherheitsmodus (Strict-Modus), um die Recherche streng auf die freigegebenen Quellen zu beschränken.
-* **Geschäftsregeln**: Im Strict-Modus werden Recherchen ausschließlich innerhalb der konfigurierten Quellen durchgeführt, um die Einschleusung unkontrollierter oder verfälschter Fremdinformationen zu verhindern.
+* **Geschäftsregeln**: 
+  * Im Strict-Modus werden Recherchen ausschließlich innerhalb der konfigurierten Quellen durchgeführt, um die Einschleusung unkontrollierter oder verfälschter Fremdinformationen zu verhindern.
+  * Ist der Strict-Modus aktiviert, müssen zwingend erlaubte Quellen (Repositories oder Domains) definiert sein; andernfalls bricht das System den Start mit einem Fehler ab.
 * **Synonyme / Abzugrenzende Begriffe**: Nicht zu verwechseln mit der allgemeinen Systemkonfiguration des Planners (wie Modellauswahl oder Zugriffsschlüssel).
