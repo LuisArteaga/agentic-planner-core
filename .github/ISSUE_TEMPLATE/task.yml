@@ -28,7 +28,7 @@ body:
     id: constraints
     attributes:
       label: Constraints
-      description: Rahmenbedingungen und ADR-Referenzen (z. B. - [ADR-0001](./docs/adr/0001-single-model-runtime.md)).
+      description: Rahmenbedingungen und ADR-Referenzen (z. B. - [ADR-0001](./docs/adr/0001-drei-separate-graphen.md)).
     validations:
       required: true
   - type: textarea
