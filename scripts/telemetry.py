@@ -1,0 +1,182 @@
+import os
+import sys
+import json
+import datetime
+import threading
+from pathlib import Path
+
+from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider, SpanProcessor
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor, BatchSpanProcessor
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+
+# Literal keys from OpenInference Semantic Conventions
+OPENINFERENCE_SPAN_KIND = "openinference.span.kind"
+INPUT_VALUE = "input.value"
+OUTPUT_VALUE = "output.value"
+LLM_MODEL_NAME = "llm.model_name"
+TOOL_NAME = "tool.name"
+TOOL_PARAMETERS = "tool.parameters"
+
+_DOCKER_SENTINEL = "/.dockerenv"
+_DEFAULT_OTLP_ENDPOINT = "http://host.docker.internal:4318/v1/traces"
+
+
+def _is_docker() -> bool:
+    """Return True when running inside a Docker container."""
+    return os.path.exists(_DOCKER_SENTINEL)
+
+
+def configure_otlp_endpoint() -> str:
+    """Return the OTLP endpoint to use, defaulting to host.docker.internal when in Docker.
+
+    If OTEL_EXPORTER_OTLP_ENDPOINT is already set in the environment, that value is
+    returned unchanged. Otherwise, if /.dockerenv is present, the default
+    http://host.docker.internal:4318/v1/traces endpoint is set and returned.
+    Returns an empty string when neither condition applies.
+    """
+    endpoint = os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", "")
+    if not endpoint and _is_docker():
+        endpoint = _DEFAULT_OTLP_ENDPOINT
+        os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] = endpoint
+    return endpoint
+
+
+def get_tracer():
+    """Returns the central tracer instance."""
+    return trace.get_tracer("agentic-planner-core-review")
+
+
+def get_agent_logs_dir() -> str:
+    """Resolve and return the path to the agent logs directory, ensuring it exists and is writable."""
+    # First check if AGENT_LOG_PATH is configured in the environment
+    agent_log_path = os.getenv("AGENT_LOG_PATH")
+    if agent_log_path:
+        try:
+            os.makedirs(agent_log_path, exist_ok=True)
+            if os.access(agent_log_path, os.W_OK):
+                return str(Path(agent_log_path).resolve())
+        except Exception:
+            pass
+
+    # Fallback to checking /workspace/.agent_logs (inside container)
+    if os.path.exists("/workspace/.agent_logs") and os.access("/workspace/.agent_logs", os.W_OK):
+        return "/workspace/.agent_logs"
+    # Otherwise check local .agent_logs relative to current working dir or project root
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(script_dir)
+    local_logs = os.path.join(project_root, ".agent_logs")
+    if os.path.exists(local_logs) and os.access(local_logs, os.W_OK):
+        return local_logs
+    # Fallback to temp logs if nothing else works
+    tmp_logs = "/tmp/agent_logs"
+    try:
+        os.makedirs(tmp_logs, mode=0o700, exist_ok=True)
+        os.chmod(tmp_logs, 0o700)
+    except Exception:
+        pass
+    return tmp_logs
+
+
+class LocalJSONLFileSpanProcessor(SpanProcessor):
+    """A custom OpenTelemetry SpanProcessor that serializes finished spans to local JSONL files."""
+    def __init__(self):
+        self._lock = threading.Lock()
+
+    def on_start(self, span, parent_context=None):
+        pass
+
+    def on_end(self, span):
+        try:
+            status_code = span.status.status_code.value if hasattr(span.status.status_code, "value") else int(span.status.status_code)
+            status_description = span.status.description or ""
+            
+            span_dict = {
+                "trace_id": f"{span.context.trace_id:032x}",
+                "span_id": f"{span.context.span_id:016x}",
+                "parent_span_id": f"{span.parent.span_id:016x}" if span.parent else "",
+                "name": span.name,
+                "kind": span.kind.value if hasattr(span.kind, "value") else int(span.kind),
+                "start_time_unix_nano": span.start_time,
+                "end_time_unix_nano": span.end_time,
+                "attributes": dict(span.attributes or {}),
+                "status_code": status_code,
+                "status_message": status_description,
+                "resource_attributes": dict(span.resource.attributes or {}),
+                "scope_name": span.instrumentation_scope.name if span.instrumentation_scope else "unknown",
+            }
+            
+            # Write to dated file
+            today_str = datetime.date.today().isoformat()
+            logs_dir = get_agent_logs_dir()
+            log_file_path = os.path.join(logs_dir, f"otel_traces_{today_str}.jsonl")
+            
+            with self._lock:
+                 with open(log_file_path, "a", encoding="utf-8") as f:
+                    f.write(json.dumps(span_dict) + "\n")
+                    f.flush()
+        except Exception as e:
+            sys.stderr.write(f"[WARN] LocalJSONLFileSpanProcessor failed to write span: {e}\n")
+
+    def shutdown(self):
+        pass
+
+    def force_flush(self, timeout_millis=30000):
+        return True
+
+
+def init_telemetry(in_memory_exporter=None):
+    """
+    Initializes OpenTelemetry and OpenInference tracer provider.
+    """
+    # If a real TracerProvider is already set (e.g., in repeated test setUps),
+    # attach the new in-memory exporter to it instead of trying to replace it.
+    current_provider = trace.get_tracer_provider()
+    if isinstance(current_provider, TracerProvider):
+        if in_memory_exporter is not None:
+            current_provider.add_span_processor(SimpleSpanProcessor(in_memory_exporter))
+        return
+
+    service_name = os.getenv("OTEL_SERVICE_NAME", "my-agent-service")
+    project_name = os.getenv("SMITHDB_PROJECT_NAME", "default")
+    
+    resource = Resource.create({
+        "service.name": service_name,
+        "openinference.project.name": project_name,
+    })
+    
+    provider = TracerProvider(resource=resource)
+    
+    # Register our crash-resistant local logging SpanProcessor
+    provider.add_span_processor(LocalJSONLFileSpanProcessor())
+    
+    if in_memory_exporter is not None:
+        provider.add_span_processor(SimpleSpanProcessor(in_memory_exporter))
+    else:
+        # Read environment config for exporter
+        configure_otlp_endpoint()
+        endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "")
+        if not endpoint:
+            # If no OTLP endpoint is configured, run in no-op tracing mode
+            return
+        api_key = os.getenv("SMITHDB_API_KEY", "")
+        
+        headers = {}
+        if api_key:
+            headers["x-api-key"] = api_key
+            
+        extra_headers_str = os.getenv("OTEL_EXPORTER_OTLP_HEADERS", "")
+        if extra_headers_str:
+            for item in extra_headers_str.split(","):
+                if "=" in item:
+                    k, v = item.split("=", 1)
+                    headers[k.strip()] = v.strip()
+                    
+        try:
+            exporter = OTLPSpanExporter(endpoint=endpoint, headers=headers)
+            provider.add_span_processor(BatchSpanProcessor(exporter))
+        except Exception as e:
+            sys.stderr.write(f"[WARN] Failed to initialize OTLP exporter: {e}\n")
+            
+    trace.set_tracer_provider(provider)
