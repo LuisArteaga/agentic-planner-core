@@ -1,0 +1,25 @@
+[project]
+name = "agentic-planner-core"
+version = "0.1.0"
+description = "Autonomous planning and issue refinement orchestrator"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "langgraph>=0.1.0",
+    "langchain>=0.2.0",
+    "pydantic>=2.0.0",
+    "pyyaml>=6.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "ruff>=0.3.0",
+]
+
+[build-system]
+requires = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["planner"]
