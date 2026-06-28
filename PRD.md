@@ -56,6 +56,7 @@ agentic-planner-core/
 ├── scripts/
 │   ├── review.py                       # LLM PR Review Judge implementation
 │   ├── review.sh                       # Wrapper to run review.py with OTel tracing
+│   ├── secret_scan.py                  # Local and CI secret scanning utility
 │   └── telemetry.py                    # Custom OTel tracing module
 ├── config/
 │   ├── grading_rubric.md               # Critic grading criteria

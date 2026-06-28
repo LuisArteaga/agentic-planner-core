@@ -35,6 +35,9 @@ jobs:
       - name: Install dependencies
         run: pip install opentelemetry-api opentelemetry-sdk opentelemetry-exporter-otlp
 
+      - name: Run secret scan
+        run: python3 scripts/secret_scan.py
+
       - name: Run LLM review
         if: always()
         run: git diff origin/main...HEAD | scripts/review.sh
