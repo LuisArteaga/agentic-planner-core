@@ -115,3 +115,44 @@ class TelemetryTests(unittest.TestCase):
 
         self.assertTrue(found_loop)
         self.assertTrue(found_phase)
+
+    def test_telemetry_isolation(self):
+        """Verify that starting a new loop run resets and isolates telemetry context/baggage."""
+        init_telemetry()
+
+        # Run 1: Left unfinished (simulating crash)
+        start_orchestrator_loop(issue_number=101, session_id="sess-A", user_id="user-A")
+        start_orchestrator_phase("phase_left_open")
+
+        # Run 2: Started in the same thread/process context
+        start_orchestrator_loop(issue_number=102, session_id="sess-B", user_id="user-B")
+        start_orchestrator_phase("phase_normal")
+        end_orchestrator_phase(exit_code=0)
+        end_orchestrator_loop(exit_code=0)
+
+        # Inspect the logs
+        files = os.listdir(self.temp_dir)
+        otel_log_files = [
+            f for f in files if f.startswith("otel_traces_") and f.endswith(".jsonl")
+        ]
+        log_file_path = os.path.join(self.temp_dir, otel_log_files[0])
+        with open(log_file_path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+
+        # Let's inspect the normal phase and loop of Run 2
+        for line in lines:
+            data = json.loads(line)
+            if data["name"] == "orchestrator_phase_phase_normal":
+                # Ensure it has Run 2 baggage only, and not Run 1's baggage!
+                self.assertEqual(
+                    data["attributes"].get("langfuse.session.id"), "sess-B"
+                )
+                self.assertEqual(data["attributes"].get("langfuse.user.id"), "user-B")
+            elif (
+                data["name"] == "orchestrator_loop"
+                and data["attributes"].get("issue.number") == 102
+            ):
+                self.assertEqual(
+                    data["attributes"].get("langfuse.session.id"), "sess-B"
+                )
+                self.assertEqual(data["attributes"].get("langfuse.user.id"), "user-B")

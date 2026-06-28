@@ -76,7 +76,13 @@ def get_agent_logs_dir() -> str:
     except Exception:
         pass
     # Fallback to temp logs if nothing else works
-    tmp_logs = "/tmp/agent_logs"
+    import getpass
+    import tempfile
+    try:
+        username = getpass.getuser()
+    except Exception:
+        username = "unknown"
+    tmp_logs = os.path.join(tempfile.gettempdir(), f"agent_logs_{username}")
     try:
         os.makedirs(tmp_logs, mode=0o700, exist_ok=True)
         os.chmod(tmp_logs, 0o700)
@@ -243,6 +249,23 @@ def init_telemetry(in_memory_exporter=None):
 def start_orchestrator_loop(issue_number=None, session_id=None, user_id=None):
     """Start the parent orchestrator_loop span."""
     state = _get_local_state()
+
+    # Clean up any leftover context/tokens from previous runs to guarantee trace isolation
+    if state.loop_token is not None:
+        try:
+            context.detach(state.loop_token)
+        except Exception:
+            pass
+        state.loop_token = None
+
+    for _, (_, token) in list(state.active_phases.items()):
+        try:
+            context.detach(token)
+        except Exception:
+            pass
+    state.active_phases.clear()
+    state.loop_span = None
+
     tracer = get_tracer()
 
     span = tracer.start_span(
