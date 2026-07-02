@@ -5,6 +5,7 @@ from planner.nodes.analyze_sources import analyze_sources_node
 from planner.nodes.web_search import web_search_node
 from planner.nodes.propose_options import propose_options_node
 from planner.nodes.evaluate_grade import evaluate_grade_node
+from planner.nodes.apply_decision import apply_decision_node
 
 # Define and compile the Refinement Subgraph
 subgraph_workflow = StateGraph(RefinementState)
@@ -12,12 +13,14 @@ subgraph_workflow.add_node("analyze_sources", analyze_sources_node)
 subgraph_workflow.add_node("web_search", web_search_node)
 subgraph_workflow.add_node("propose_options", propose_options_node)
 subgraph_workflow.add_node("evaluate_grade", evaluate_grade_node)
+subgraph_workflow.add_node("apply_decision", apply_decision_node)
 
 subgraph_workflow.set_entry_point("analyze_sources")
 subgraph_workflow.add_edge("analyze_sources", "web_search")
 subgraph_workflow.add_edge("web_search", "propose_options")
 subgraph_workflow.add_edge("propose_options", "evaluate_grade")
-subgraph_workflow.add_edge("evaluate_grade", END)
+subgraph_workflow.add_edge("evaluate_grade", "apply_decision")
+subgraph_workflow.add_edge("apply_decision", END)
 
 refine_subgraph = subgraph_workflow.compile()
 
@@ -40,6 +43,7 @@ def run_refinement_subgraph_node(state: AgentState) -> dict:
 
     subgraph_input = {
         "draft_issue_content": draft_content,
+        "draft_issue_path": str(draft_path),
         "strict_mode": state.get("strict_mode", True),
         "allowed_domains": state.get("allowed_domains", []),
         "messages": [],
