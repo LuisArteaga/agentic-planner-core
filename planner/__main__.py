@@ -1,6 +1,15 @@
 import argparse
+import glob
 import sys
+from pathlib import Path
 from planner.config import AppConfig
+from planner.refine_graph import graph
+from scripts.telemetry import (
+    end_orchestrator_loop,
+    init_telemetry,
+    orchestrator_phase,
+    start_orchestrator_loop,
+)
 
 
 def main():
@@ -22,16 +31,6 @@ def main():
     args = parser.parse_args()
 
     if args.command == "refine":
-        from pathlib import Path
-        import glob
-        from scripts.telemetry import (
-            init_telemetry,
-            start_orchestrator_loop,
-            end_orchestrator_loop,
-            orchestrator_phase,
-        )
-        from planner.refine_graph import graph
-
         init_telemetry()
         start_orchestrator_loop()
         exit_code = 0
@@ -76,6 +75,13 @@ def main():
                     "allowed_domains": allowed_domains,
                     "status": "idle",
                 }
+
+                # Abort at startup if strict mode is enabled but whitelist is empty
+                if config.sources.strict and not allowed_domains:
+                    raise ValueError(
+                        "Strict-mode is enabled (strict: true), but allowed_domains is empty. "
+                        "At least one source must be defined."
+                    )
 
                 # 4. Invoke graph
                 if draft_files:

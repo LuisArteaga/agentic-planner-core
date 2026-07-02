@@ -29,7 +29,7 @@ def web_search_node(state: RefinementState) -> Dict[str, Any]:
 
     with orchestrator_phase("web_search"):
         queries = state.get("search_queries", [])
-        strict_mode = state.get("strict_mode", False)
+        strict_mode = state.get("strict_mode", True)
         allowed_domains = state.get("allowed_domains", [])
 
         if strict_mode and not allowed_domains:

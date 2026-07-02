@@ -34,7 +34,7 @@ def run_refinement_subgraph_node(state: AgentState) -> dict:
 
     subgraph_input = {
         "draft_issue_content": draft_content,
-        "strict_mode": state.get("strict_mode", False),
+        "strict_mode": state.get("strict_mode", True),
         "allowed_domains": state.get("allowed_domains", []),
         "messages": [],
         "keywords": [],

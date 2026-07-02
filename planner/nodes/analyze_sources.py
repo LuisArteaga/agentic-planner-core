@@ -16,7 +16,7 @@ def analyze_sources_node(state: RefinementState) -> Dict[str, Any]:
 
     with orchestrator_phase("analyze_sources"):
         draft_content = state.get("draft_issue_content", "")
-        strict_mode = state.get("strict_mode", False)
+        strict_mode = state.get("strict_mode", True)
         allowed_domains = state.get("allowed_domains", [])
 
         if strict_mode and not allowed_domains:
