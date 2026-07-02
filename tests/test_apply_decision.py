@@ -8,6 +8,8 @@ from planner.nodes.apply_decision import (
     apply_decision_node,
     get_next_agdr_number,
     ApplyDecisionOutput,
+    AgDROption,
+    AgDRConsequences,
 )
 
 
@@ -49,12 +51,33 @@ class ApplyDecisionTests(unittest.TestCase):
         mock_structured_model = MagicMock()
         mock_instance.with_structured_output.return_value = mock_structured_model
 
-        # Mock ApplyDecisionOutput
+        # Mock ApplyDecisionOutput with structured fields
         mock_output = ApplyDecisionOutput(
             requires_agdr=True,
             agdr_title="use-sqlite-cache",
             y_statement="In the context of caching, facing high latency, we decided to use sqlite to achieve speed.",
-            agdr_content="## Kontext und Problemstellung\nWe choose SQLite.",
+            context_and_problem="We need structured cache storage.",
+            drivers=["speed", "simplicity"],
+            options_considered=[
+                AgDROption(
+                    name="SQLite",
+                    description="Fast and local",
+                    score=9.0,
+                    checks_passed=9,
+                ),
+                AgDROption(
+                    name="Redis",
+                    description="In-memory cache",
+                    score=7.5,
+                    checks_passed=7,
+                ),
+            ],
+            decision_rationale="We chose SQLite because it runs in-process.",
+            consequences=AgDRConsequences(
+                positive=["Fast reads", "No extra server"],
+                negative=["Local file locks"],
+            ),
+            references=["https://sqlite.org"],
             updated_issue_content="## What to build\nEnriched what to build.",
         )
         mock_raw_msg = MagicMock()
@@ -121,7 +144,25 @@ class ApplyDecisionTests(unittest.TestCase):
                 agdr_content,
             )
             self.assertIn(
-                "## Kontext und Problemstellung\nWe choose SQLite.", agdr_content
+                "## Kontext und Problemstellung\nWe need structured cache storage.",
+                agdr_content,
+            )
+            self.assertIn(
+                "## Entscheidungsfaktoren (Drivers)\n* speed\n* simplicity",
+                agdr_content,
+            )
+            self.assertIn("## Betrachtete Optionen", agdr_content)
+            self.assertIn("| SQLite | 9.0/10.0 | 9/10 | Fast and local |", agdr_content)
+            self.assertIn("| Redis | 7.5/10.0 | 7/10 | In-memory cache |", agdr_content)
+            self.assertIn(
+                "## Entscheidung\nWe chose SQLite because it runs in-process.",
+                agdr_content,
+            )
+            self.assertIn(
+                "* **Positiv**:\n* Fast reads\n* No extra server", agdr_content
+            )
+            self.assertIn(
+                "## Inspiration & Referenzen\n* https://sqlite.org", agdr_content
             )
 
     @patch("planner.nodes.apply_decision.ChatOpenAI")
@@ -137,7 +178,12 @@ class ApplyDecisionTests(unittest.TestCase):
             requires_agdr=False,
             agdr_title="",
             y_statement="",
-            agdr_content="",
+            context_and_problem="",
+            drivers=[],
+            options_considered=[],
+            decision_rationale="",
+            consequences=AgDRConsequences(),
+            references=[],
             updated_issue_content="## What to build\nOriginal content.",  # identical
         )
         mock_raw_msg = MagicMock()
@@ -191,13 +237,12 @@ class ApplyDecisionTests(unittest.TestCase):
 
     @patch("planner.nodes.apply_decision.ChatOpenAI")
     def test_apply_decision_path_traversal_raises(self, mock_chat_openai):
-        # We don't even call ChatOpenAI if path validation fails
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
             os.environ["GITHUB_WORKSPACE"] = str(workspace)
 
-            # Define a path pointing outside workspace (using path traversal or root file)
-            outside_path = "/etc/passwd"  # absolute path outside GITHUB_WORKSPACE
+            # Define a path pointing outside workspace
+            outside_path = "/etc/passwd"
 
             state: RefinementState = {
                 "draft_issue_content": "some content",
@@ -217,7 +262,6 @@ class ApplyDecisionTests(unittest.TestCase):
                 "all_grades": [],
             }
 
-            # Should raise ValueError indicating path traversal
             with self.assertRaises(ValueError) as context:
                 apply_decision_node(state)
 

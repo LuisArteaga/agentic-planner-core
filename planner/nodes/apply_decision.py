@@ -2,7 +2,7 @@ import os
 import logging
 import datetime
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, List
 from pydantic import BaseModel, Field
 from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_openai import ChatOpenAI
@@ -12,6 +12,28 @@ from scripts.telemetry import orchestrator_phase
 from planner.nodes.evaluate_grade import load_adrs
 
 logger = logging.getLogger("planner.nodes.apply_decision")
+
+
+class AgDROption(BaseModel):
+    """Pydantic schema representing a single evaluated option for the AgDR."""
+
+    name: str = Field(description="The name of the implementation option.")
+    description: str = Field(
+        description="A short explanation of how the option works and its tradeoffs."
+    )
+    score: float = Field(description="The score assigned by the Critic (0.0 to 10.0).")
+    checks_passed: int = Field(
+        description="The number of atomic criteria checks passed (0 to 10)."
+    )
+
+
+class AgDRConsequences(BaseModel):
+    """Pydantic schema for positive and negative consequences of the decision."""
+
+    positive: List[str] = Field(
+        default_factory=list, description="List of pros/advantages."
+    )
+    negative: List[str] = Field(default_factory=list, description="List of cons/risks.")
 
 
 class ApplyDecisionOutput(BaseModel):
@@ -26,9 +48,31 @@ class ApplyDecisionOutput(BaseModel):
     y_statement: str = Field(
         description="A single-sentence summary of the decision following the pattern: 'In the context of [situation], facing [concern], we decided [decision] to achieve [result].' Empty if requires_agdr is false."
     )
-    agdr_content: str = Field(
-        description="The content of the AgDR in markdown format, starting directly with the section '## Kontext und Problemstellung'. Empty if requires_agdr is false."
+
+    # Structured AgDR content fields (to ensure Options-Matrix and Decision Rationale are present)
+    context_and_problem: str = Field(
+        description="Description of the context, the concrete problem, and why this decision is hard to reverse. Empty if requires_agdr is false."
     )
+    drivers: List[str] = Field(
+        default_factory=list,
+        description="List of key decision factors/drivers (e.g. scalability, simplicity). Empty if requires_agdr is false.",
+    )
+    options_considered: List[AgDROption] = Field(
+        default_factory=list,
+        description="The options that were evaluated, detailing their score and description. Empty if requires_agdr is false.",
+    )
+    decision_rationale: str = Field(
+        description="Detailed explanation of why the chosen option was selected and how it addresses the drivers. Empty if requires_agdr is false."
+    )
+    consequences: AgDRConsequences = Field(
+        default_factory=AgDRConsequences,
+        description="The anticipated positive and negative consequences of this decision. Empty if requires_agdr is false.",
+    )
+    references: List[str] = Field(
+        default_factory=list,
+        description="Citations, URLs, standard specs, or existing ADRs/AgDRs referenced. Empty if requires_agdr is false.",
+    )
+
     updated_issue_content: str = Field(
         description="Complete rewritten draft issue markdown content, preserving all original headers and sections, but enriching them with research findings, grading reasons, and references/links to AgDRs."
     )
@@ -114,10 +158,15 @@ def apply_decision_node(state: RefinementState) -> Dict[str, Any]:
             "An AgDR is required if the decision is hard to reverse, surprising without context, or the result of a real trade-off.\n\n"
             "CRITICAL INSTRUCTIONS:\n"
             "1. Evaluate if the chosen option requires an AgDR. Set 'requires_agdr' accordingly.\n"
-            "2. If requires_agdr is true, generate 'agdr_title' (a short kebab-case title slug, e.g. 'use-sqlite-cache'), "
-            "   'y_statement', and 'agdr_content'.\n"
-            "   - 'y_statement' MUST strictly follow the pattern: 'In the context of [situation], facing [concern], we decided [decision] to achieve [result].'\n"
-            "   - 'agdr_content' MUST follow the standard AgDR format starting with '## Kontext und Problemstellung'. DO NOT include the main title (#) or the metadata list at the top, as those will be prepended by the system.\n"
+            "2. If requires_agdr is true, you MUST fully populate the structured AgDR fields:\n"
+            "   - 'agdr_title': a short kebab-case title slug (e.g. 'use-sqlite-cache')\n"
+            "   - 'y_statement': MUST follow the pattern: 'In the context of [situation], facing [concern], we decided [decision] to achieve [result].'\n"
+            "   - 'context_and_problem': Description of context and why it is hard to reverse.\n"
+            "   - 'drivers': Key factors/drivers.\n"
+            "   - 'options_considered': Fully list the alternatives, including names, descriptions, scores, and checks passed.\n"
+            "   - 'decision_rationale': Why the option was chosen and how it satisfies the drivers.\n"
+            "   - 'consequences': Positive and negative consequences.\n"
+            "   - 'references': Inspiration and web-search/code references.\n"
             "3. Rewrite the draft issue content. You MUST strictly preserve all the original section headers and structure (e.g. ## What to build, ## Scope, ## Constraints, ## Edge cases, ## Acceptance criteria).\n"
             "   Enrich the contents of these sections with:\n"
             "   - Research findings (citing search results and URLs).\n"
@@ -264,7 +313,44 @@ def apply_decision_node(state: RefinementState) -> Dict[str, Any]:
                 f"* **Y-Statement**: {response_data.y_statement.strip()}\n\n"
             )
 
-            full_agdr_content = header + response_data.agdr_content.strip() + "\n"
+            # Stitch the structured AgDR markdown sections together
+            drivers_list = "\n".join(
+                f"* {d.strip()}" for d in response_data.drivers if d.strip()
+            )
+            pros_list = "\n".join(
+                f"* {p.strip()}"
+                for p in response_data.consequences.positive
+                if p.strip()
+            )
+            cons_list = "\n".join(
+                f"* {c.strip()}"
+                for c in response_data.consequences.negative
+                if c.strip()
+            )
+            refs_list = "\n".join(
+                f"* {r.strip()}" for r in response_data.references if r.strip()
+            )
+
+            # Generate the Options-Matrix markdown table
+            options_matrix = (
+                "| Option | Score | Checks Passed | Description |\n"
+                "| :--- | :--- | :--- | :--- |\n"
+            )
+            for opt in response_data.options_considered:
+                options_matrix += f"| {opt.name} | {opt.score}/10.0 | {opt.checks_passed}/10 | {opt.description} |\n"
+
+            agdr_body = (
+                f"## Kontext und Problemstellung\n{response_data.context_and_problem.strip()}\n\n"
+                f"## Entscheidungsfaktoren (Drivers)\n{drivers_list if drivers_list else '* None'}\n\n"
+                f"## Betrachtete Optionen\n{options_matrix}\n"
+                f"## Entscheidung\n{response_data.decision_rationale.strip()}\n\n"
+                f"### Konsequenzen\n"
+                f"* **Positiv**:\n{pros_list if pros_list else '* None'}\n"
+                f"* **Negativ**:\n{cons_list if cons_list else '* None'}\n\n"
+                f"## Inspiration & Referenzen\n{refs_list if refs_list else '* None'}\n"
+            )
+
+            full_agdr_content = header + agdr_body
 
             try:
                 with open(agdr_path, "w", encoding="utf-8") as f:
