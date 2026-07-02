@@ -6,7 +6,7 @@ from unittest.mock import patch, MagicMock
 from planner.state import RefinementState
 from planner.nodes.apply_decision import (
     apply_decision_node,
-    get_next_adr_number,
+    get_next_agdr_number,
     ApplyDecisionOutput,
 )
 
@@ -22,27 +22,27 @@ class ApplyDecisionTests(unittest.TestCase):
         os.environ.clear()
         os.environ.update(self.original_env)
 
-    def test_get_next_adr_number(self):
+    def test_get_next_agdr_number(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            adr_path = Path(temp_dir)
+            agdr_path = Path(temp_dir)
             # When empty
-            self.assertEqual(get_next_adr_number(adr_path), 1)
+            self.assertEqual(get_next_agdr_number(agdr_path), 1)
 
-            # With some ADR files
-            (adr_path / "0001-first.md").write_text("content", encoding="utf-8")
-            (adr_path / "0002-second.md").write_text("content", encoding="utf-8")
+            # With some AgDR files
+            (agdr_path / "0001-first.md").write_text("content", encoding="utf-8")
+            (agdr_path / "0002-second.md").write_text("content", encoding="utf-8")
             # Ignored files
-            (adr_path / "README.md").write_text("content", encoding="utf-8")
-            (adr_path / "0005.txt").write_text("content", encoding="utf-8")
+            (agdr_path / "README.md").write_text("content", encoding="utf-8")
+            (agdr_path / "0005.txt").write_text("content", encoding="utf-8")
 
-            self.assertEqual(get_next_adr_number(adr_path), 3)
+            self.assertEqual(get_next_agdr_number(agdr_path), 3)
 
             # Test gap or higher number
-            (adr_path / "0010-high.md").write_text("content", encoding="utf-8")
-            self.assertEqual(get_next_adr_number(adr_path), 11)
+            (agdr_path / "0010-high.md").write_text("content", encoding="utf-8")
+            self.assertEqual(get_next_agdr_number(agdr_path), 11)
 
     @patch("planner.nodes.apply_decision.ChatOpenAI")
-    def test_apply_decision_requires_adr(self, mock_chat_openai):
+    def test_apply_decision_requires_agdr(self, mock_chat_openai):
         mock_instance = MagicMock()
         mock_chat_openai.return_value = mock_instance
 
@@ -51,9 +51,9 @@ class ApplyDecisionTests(unittest.TestCase):
 
         # Mock ApplyDecisionOutput
         mock_output = ApplyDecisionOutput(
-            requires_adr=True,
-            adr_title="use-sqlite-cache",
-            adr_content="## Kontext und Problemstellung\nWe choose SQLite.",
+            requires_agdr=True,
+            agdr_title="use-sqlite-cache",
+            agdr_content="## Kontext und Problemstellung\nWe choose SQLite.",
             updated_issue_content="## What to build\nEnriched what to build.",
         )
         mock_raw_msg = MagicMock()
@@ -105,22 +105,22 @@ class ApplyDecisionTests(unittest.TestCase):
                 "## What to build\nEnriched what to build.\n",
             )
 
-            # Check ADR created
-            adr_file = workspace / "docs" / "adr" / "0001-use-sqlite-cache.md"
-            self.assertTrue(adr_file.exists())
-            adr_content = adr_file.read_text(encoding="utf-8")
-            self.assertIn("# 0001 - Use Sqlite Cache", adr_content)
-            self.assertIn("* **Status**: Accepted", adr_content)
+            # Check AgDR created
+            agdr_file = workspace / "docs" / "agdr" / "0001-use-sqlite-cache.md"
+            self.assertTrue(agdr_file.exists())
+            agdr_content = agdr_file.read_text(encoding="utf-8")
+            self.assertIn("# 0001 - Use Sqlite Cache", agdr_content)
+            self.assertIn("* **Status**: Accepted", agdr_content)
             self.assertIn(
-                "* **Entscheidungsträger**: google/gemini-2.5-flash", adr_content
+                "* **Entscheidungsträger**: google/gemini-2.5-flash", agdr_content
             )
-            self.assertIn("* **Trigger-Issue**: 0005-issue.md", adr_content)
+            self.assertIn("* **Trigger-Issue**: 0005-issue.md", agdr_content)
             self.assertIn(
-                "## Kontext und Problemstellung\nWe choose SQLite.", adr_content
+                "## Kontext und Problemstellung\nWe choose SQLite.", agdr_content
             )
 
     @patch("planner.nodes.apply_decision.ChatOpenAI")
-    def test_apply_decision_no_adr_and_no_changes(self, mock_chat_openai):
+    def test_apply_decision_no_agdr_and_no_changes(self, mock_chat_openai):
         mock_instance = MagicMock()
         mock_chat_openai.return_value = mock_instance
 
@@ -129,9 +129,9 @@ class ApplyDecisionTests(unittest.TestCase):
 
         # Mock ApplyDecisionOutput with no changes
         mock_output = ApplyDecisionOutput(
-            requires_adr=False,
-            adr_title="",
-            adr_content="",
+            requires_agdr=False,
+            agdr_title="",
+            agdr_content="",
             updated_issue_content="## What to build\nOriginal content.",  # identical
         )
         mock_raw_msg = MagicMock()
@@ -166,7 +166,7 @@ class ApplyDecisionTests(unittest.TestCase):
                 "best_option": {
                     "choice_id": "opt1",
                     "score": 5.0,
-                },  # Low score -> would proposed Proposed if ADR
+                },  # Low score -> would propose Proposed if AgDR
                 "all_grades": [],
             }
 
@@ -180,8 +180,8 @@ class ApplyDecisionTests(unittest.TestCase):
                 "## What to build\nOriginal content.",
             )
 
-            # Check NO ADR directory / file exists
-            self.assertFalse((workspace / "docs" / "adr").exists())
+            # Check NO AgDR directory / file exists
+            self.assertFalse((workspace / "docs" / "agdr").exists())
 
     @patch("planner.nodes.apply_decision.ChatOpenAI")
     def test_apply_decision_io_error_raises(self, mock_chat_openai):
@@ -192,9 +192,9 @@ class ApplyDecisionTests(unittest.TestCase):
         mock_instance.with_structured_output.return_value = mock_structured_model
 
         mock_output = ApplyDecisionOutput(
-            requires_adr=True,
-            adr_title="error-trigger",
-            adr_content="## Kontext und Problemstellung\nBoom.",
+            requires_agdr=True,
+            agdr_title="error-trigger",
+            agdr_content="## Kontext und Problemstellung\nBoom.",
             updated_issue_content="## What to build\nBoom.",
         )
         mock_structured_model.invoke.return_value = {

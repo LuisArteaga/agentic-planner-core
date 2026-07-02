@@ -71,9 +71,16 @@ def evaluate_grade_node(state: RefinementState) -> Dict[str, Any]:
             logger.warning("No options to grade.")
             return {"best_option": {}, "all_grades": [], "status": "failed"}
 
-        # Load rubric and ADRs
+        # Load rubric, ADRs, and AgDRs
         rubric_content = load_rubric()
-        adr_content = load_adrs()
+        adr_content = load_adrs("docs/adr")
+        agdr_content = load_adrs("docs/agdr")
+
+        combined_decisions = ""
+        if adr_content:
+            combined_decisions += f"Existing human ADRs:\n{adr_content}\n\n"
+        if agdr_content:
+            combined_decisions += f"Existing agent AgDRs:\n{agdr_content}\n\n"
 
         # Instantiate Critic LLM
         model_name = os.getenv("AGENT_MODEL", "google/gemini-2.5-flash")
@@ -92,7 +99,7 @@ def evaluate_grade_node(state: RefinementState) -> Dict[str, Any]:
         system_instruction = (
             "You are a Senior Software Quality Engineer acting as an independent Critic.\n"
             "Your task is to grade the proposed technical options against the local Grading Rubric "
-            "and all existing Architecture Decision Records (ADRs) of the repository.\n\n"
+            "and all existing Architecture Decision Records (ADRs) and Agent Decision Records (AgDRs) of the repository.\n\n"
             "CRITICAL INSTRUCTIONS:\n"
             "1. Use the BinEval framework. For each option, evaluate the 10 atomic binary checks "
             "listed in the rubric. Set each check to true (passed) or false (failed).\n"
@@ -101,14 +108,14 @@ def evaluate_grade_node(state: RefinementState) -> Dict[str, Any]:
             "3. If two options receive the same score, you MUST apply a clear prioritization logic "
             "favoring the option with lower complexity (Radical Simplicity / YAGNI). If needed, give the simpler "
             "option a minor score bump (+0.1) or clearly document the tie-breaker choice in the reasoning.\n"
-            "4. If existing ADRs contain contradictory guidelines, you MUST explicitly document this contradiction "
+            "4. If existing ADRs or AgDRs contain contradictory guidelines, you MUST explicitly document this contradiction "
             "in the 'reasoning' field of the affected options.\n"
-            "5. Ground your review in the provided ADRs and rubric. Do not rely on external undocumented assumptions."
+            "5. Ground your review in the provided ADRs/AgDRs and rubric. Do not rely on external undocumented assumptions."
         )
 
         user_message = (
             f"Grading Rubric:\n{rubric_content}\n\n"
-            f"Existing ADRs:\n{adr_content if adr_content else 'No ADRs defined.'}\n\n"
+            f"Existing Decisions (ADRs & AgDRs):\n{combined_decisions if combined_decisions else 'No decisions defined.'}\n\n"
             f"Proposed Options to Grade:\n"
         )
         for opt in proposed_options:

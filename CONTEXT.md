@@ -47,5 +47,6 @@ Dieses Dokument definiert die fachliche Terminologie für diesen Kontext. Es dar
   * Jedes AgDR muss zwingend ein standardisiertes **Y-Statement** zur Kurzzusammenfassung der Entscheidung enthalten.
   * Das Dokument muss die evaluierten Alternativen (Optionen-Matrix) sowie die genauen Bewertungsgründe dokumentieren.
   * Zu den Pflicht-Metadaten gehören: das auswertende Kritik-Modell (`Model`), die Langfuse-Trace-ID (`Trace-ID`) sowie die auslösende Aufgabe (`Trigger-Issue`).
+  * AgDR-Dokumente werden im Ziel-Repository im Verzeichnis `docs/agdr/` abgelegt.
 * **Synonyme / Abzugrenzende Begriffe**: Abzugrenzen von klassischen, rein manuell durch menschliche Architekten erstellten Architekturentscheidungen (ADR).
 

@@ -17,26 +17,26 @@ logger = logging.getLogger("planner.nodes.apply_decision")
 class ApplyDecisionOutput(BaseModel):
     """Pydantic model for structured decision output from LLM."""
 
-    requires_adr: bool = Field(
-        description="Whether a new Architecture Decision Record (ADR/AgDR) is required."
+    requires_agdr: bool = Field(
+        description="Whether a new Agent Decision Record (AgDR) is required."
     )
-    adr_title: str = Field(
-        description="A short kebab-case title slug for the new ADR (e.g., 'use-sqlite-cache'). Empty if requires_adr is false."
+    agdr_title: str = Field(
+        description="A short kebab-case title slug for the new AgDR (e.g., 'use-sqlite-cache'). Empty if requires_agdr is false."
     )
-    adr_content: str = Field(
-        description="The content of the ADR in markdown format, starting directly with the section '## Kontext und Problemstellung'. Empty if requires_adr is false."
+    agdr_content: str = Field(
+        description="The content of the AgDR in markdown format, starting directly with the section '## Kontext und Problemstellung'. Empty if requires_agdr is false."
     )
     updated_issue_content: str = Field(
-        description="Complete rewritten draft issue markdown content, preserving all original headers and sections, but enriching them with research findings, grading reasons, and references/links to ADRs."
+        description="Complete rewritten draft issue markdown content, preserving all original headers and sections, but enriching them with research findings, grading reasons, and references/links to AgDRs."
     )
 
 
-def get_next_adr_number(adr_dir: Path) -> int:
-    """Scan the ADR directory and return the next free ADR sequential number."""
-    if not adr_dir.exists():
+def get_next_agdr_number(agdr_dir: Path) -> int:
+    """Scan the AgDR directory and return the next free AgDR sequential number."""
+    if not agdr_dir.exists():
         return 1
     max_num = 0
-    for f in adr_dir.glob("*.md"):
+    for f in agdr_dir.glob("*.md"):
         name = f.name
         parts = name.split("-", 1)
         if parts[0].isdigit():
@@ -47,7 +47,7 @@ def get_next_adr_number(adr_dir: Path) -> int:
 
 
 def apply_decision_node(state: RefinementState) -> Dict[str, Any]:
-    """Node that decides if a new ADR is required, generates it,
+    """Node that decides if a new AgDR is required, generates it,
 
     and rewrites the local draft issue file.
     """
@@ -69,8 +69,16 @@ def apply_decision_node(state: RefinementState) -> Dict[str, Any]:
         if not draft_path.exists():
             raise FileNotFoundError(f"Draft issue file does not exist: {draft_path}")
 
-        # 1. Load existing ADRs to provide context to the LLM
-        existing_adrs = load_adrs()
+        # 1. Load existing ADRs and AgDRs to provide context to the LLM
+        workspace_dir = Path(os.environ.get("GITHUB_WORKSPACE", os.getcwd()))
+        existing_adrs = load_adrs(str(workspace_dir / "docs" / "adr"))
+        existing_agdrs = load_adrs(str(workspace_dir / "docs" / "agdr"))
+
+        combined_decisions = ""
+        if existing_adrs:
+            combined_decisions += f"Existing human ADRs:\n{existing_adrs}\n\n"
+        if existing_agdrs:
+            combined_decisions += f"Existing agent AgDRs:\n{existing_agdrs}\n\n"
 
         # 2. Configure model
         model_name = os.getenv("AGENT_MODEL", "google/gemini-2.5-flash")
@@ -89,18 +97,18 @@ def apply_decision_node(state: RefinementState) -> Dict[str, Any]:
         system_instruction = (
             "You are a Principal Software Architect.\n"
             "Your task is to analyze the draft issue description and the chosen best option, "
-            "then decide if a new Architecture Decision Record (ADR/AgDR) is required, and rewrite the draft issue content.\n\n"
-            "ADR/AgDR criteria:\n"
-            "An ADR is required if the decision is hard to reverse, surprising without context, or the result of a real trade-off.\n\n"
+            "then decide if a new Agent Decision Record (AgDR) is required, and rewrite the draft issue content.\n\n"
+            "AgDR criteria:\n"
+            "An AgDR is required if the decision is hard to reverse, surprising without context, or the result of a real trade-off.\n\n"
             "CRITICAL INSTRUCTIONS:\n"
-            "1. Evaluate if the chosen option requires an ADR. Set 'requires_adr' accordingly.\n"
-            "2. If requires_adr is true, generate 'adr_title' (a short kebab-case title slug, e.g. 'use-sqlite-cache') and 'adr_content'.\n"
-            "   The 'adr_content' MUST follow the standard ADR format starting with '## Kontext und Problemstellung'. DO NOT include the main title (#) or the metadata list at the top, as those will be prepended by the system.\n"
+            "1. Evaluate if the chosen option requires an AgDR. Set 'requires_agdr' accordingly.\n"
+            "2. If requires_agdr is true, generate 'agdr_title' (a short kebab-case title slug, e.g. 'use-sqlite-cache') and 'agdr_content'.\n"
+            "   The 'agdr_content' MUST follow the standard AgDR format starting with '## Kontext und Problemstellung'. DO NOT include the main title (#) or the metadata list at the top, as those will be prepended by the system.\n"
             "3. Rewrite the draft issue content. You MUST strictly preserve all the original section headers and structure (e.g. ## What to build, ## Scope, ## Constraints, ## Edge cases, ## Acceptance criteria).\n"
             "   Enrich the contents of these sections with:\n"
             "   - Research findings (citing search results and URLs).\n"
             "   - Grading reasons and scores of the evaluated options.\n"
-            "   - Clear references or links to any existing ADRs or the newly created ADR.\n"
+            "   - Clear references or links to any existing ADRs/AgDRs or the newly created AgDR.\n"
             "4. If the refinement yielded no new findings or changes, keep 'updated_issue_content' exactly identical to the original content.\n"
         )
 
@@ -127,7 +135,7 @@ def apply_decision_node(state: RefinementState) -> Dict[str, Any]:
             f"Chosen Option:\n{best_option}\n\n"
             f"All Graded Options:\n{grades_context}\n"
             f"{search_context}\n\n"
-            f"Existing ADRs:\n{existing_adrs if existing_adrs else 'None'}\n\n"
+            f"Existing Decisions:\n{combined_decisions if combined_decisions else 'None'}\n\n"
             f"Produce the structured output."
         )
 
@@ -186,18 +194,17 @@ def apply_decision_node(state: RefinementState) -> Dict[str, Any]:
                 f"Apply decision failed to generate structured output after 3 attempts. Last error: {last_error}"
             )
 
-        # 4. Handle ADR creation if required
-        if response_data.requires_adr:
-            workspace_dir = Path(os.environ.get("GITHUB_WORKSPACE", os.getcwd()))
-            adr_dir = workspace_dir / "docs" / "adr"
+        # 4. Handle AgDR creation if required
+        if response_data.requires_agdr:
+            agdr_dir = workspace_dir / "docs" / "agdr"
             try:
-                adr_dir.mkdir(parents=True, exist_ok=True)
+                agdr_dir.mkdir(parents=True, exist_ok=True)
             except Exception as e:
-                raise IOError(f"Failed to create ADR directory at {adr_dir}: {e}")
+                raise IOError(f"Failed to create AgDR directory at {agdr_dir}: {e}")
 
-            next_num = get_next_adr_number(adr_dir)
+            next_num = get_next_agdr_number(agdr_dir)
             num_str = f"{next_num:04d}"
-            title_slug = response_data.adr_title.strip()
+            title_slug = response_data.agdr_title.strip()
             # Clean title slug
             title_slug = "".join(
                 c if c.isalnum() or c in ("-", "_") else "-" for c in title_slug
@@ -206,8 +213,8 @@ def apply_decision_node(state: RefinementState) -> Dict[str, Any]:
             if not title_slug:
                 title_slug = "decision"
 
-            adr_filename = f"{num_str}-{title_slug}.md"
-            adr_path = adr_dir / adr_filename
+            agdr_filename = f"{num_str}-{title_slug}.md"
+            agdr_path = agdr_dir / agdr_filename
 
             # Format AgDR Header Metadata
             best_score = best_option.get("score", 0.0)
@@ -223,7 +230,7 @@ def apply_decision_node(state: RefinementState) -> Dict[str, Any]:
             trigger_issue = draft_path.name
 
             # Map slug to title header
-            title_display = response_data.adr_title.replace("-", " ").title()
+            title_display = response_data.agdr_title.replace("-", " ").title()
 
             header = (
                 f"# {num_str} - {title_display}\n\n"
@@ -234,24 +241,20 @@ def apply_decision_node(state: RefinementState) -> Dict[str, Any]:
                 f"* **Trigger-Issue**: {trigger_issue}\n\n"
             )
 
-            full_adr_content = header + response_data.adr_content.strip() + "\n"
+            full_agdr_content = header + response_data.agdr_content.strip() + "\n"
 
             try:
-                with open(adr_path, "w", encoding="utf-8") as f:
-                    f.write(full_adr_content)
-                logger.info(f"Successfully wrote new ADR to {adr_path}")
+                with open(agdr_path, "w", encoding="utf-8") as f:
+                    f.write(full_agdr_content)
+                logger.info(f"Successfully wrote new AgDR to {agdr_path}")
             except Exception as e:
-                raise IOError(f"Failed to write ADR to {adr_path}: {e}")
+                raise IOError(f"Failed to write AgDR to {agdr_path}: {e}")
 
         # 5. Rewrite/update the local draft issue file
         updated_content = response_data.updated_issue_content.strip()
         if updated_content and updated_content != draft_content:
             try:
-                # Read before edit check (ensure file is readable and exists)
-                with open(draft_path, "r", encoding="utf-8") as f:
-                    _ = f.read()
-
-                # Overwrite with enriched content
+                # Overwrite with enriched content directly (existence already validated above)
                 with open(draft_path, "w", encoding="utf-8") as f:
                     f.write(updated_content + "\n")
                 logger.info(f"Successfully updated draft issue at {draft_path}")
