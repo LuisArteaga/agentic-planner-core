@@ -3,15 +3,21 @@ from langgraph.graph import StateGraph, END
 from planner.state import AgentState, RefinementState
 from planner.nodes.analyze_sources import analyze_sources_node
 from planner.nodes.web_search import web_search_node
+from planner.nodes.propose_options import propose_options_node
+from planner.nodes.evaluate_grade import evaluate_grade_node
 
 # Define and compile the Refinement Subgraph
 subgraph_workflow = StateGraph(RefinementState)
 subgraph_workflow.add_node("analyze_sources", analyze_sources_node)
 subgraph_workflow.add_node("web_search", web_search_node)
+subgraph_workflow.add_node("propose_options", propose_options_node)
+subgraph_workflow.add_node("evaluate_grade", evaluate_grade_node)
 
 subgraph_workflow.set_entry_point("analyze_sources")
 subgraph_workflow.add_edge("analyze_sources", "web_search")
-subgraph_workflow.add_edge("web_search", END)
+subgraph_workflow.add_edge("web_search", "propose_options")
+subgraph_workflow.add_edge("propose_options", "evaluate_grade")
+subgraph_workflow.add_edge("evaluate_grade", END)
 
 refine_subgraph = subgraph_workflow.compile()
 
@@ -44,6 +50,9 @@ def run_refinement_subgraph_node(state: AgentState) -> dict:
         "completion_tokens": 0,
         "model_name": "",
         "status": "idle",
+        "proposed_options": [],
+        "best_option": {},
+        "all_grades": [],
     }
 
     # Execute the subgraph
