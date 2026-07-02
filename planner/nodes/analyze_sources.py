@@ -16,7 +16,14 @@ def analyze_sources_node(state: RefinementState) -> Dict[str, Any]:
 
     with orchestrator_phase("analyze_sources"):
         draft_content = state.get("draft_issue_content", "")
-        strict_mode = state.get("strict_mode", True)
+        strict_mode = state.get("strict_mode", False)
+        allowed_domains = state.get("allowed_domains", [])
+
+        if strict_mode and not allowed_domains:
+            raise ValueError(
+                "Strict-mode is enabled, but allowed_domains is empty. "
+                "At least one source must be defined."
+            )
 
         # Instantiate OpenRouter client
         model_name = os.getenv("AGENT_MODEL", "google/gemini-2.5-flash")

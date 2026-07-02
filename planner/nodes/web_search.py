@@ -29,7 +29,14 @@ def web_search_node(state: RefinementState) -> Dict[str, Any]:
 
     with orchestrator_phase("web_search"):
         queries = state.get("search_queries", [])
+        strict_mode = state.get("strict_mode", False)
         allowed_domains = state.get("allowed_domains", [])
+
+        if strict_mode and not allowed_domains:
+            raise ValueError(
+                "Strict-mode is enabled, but allowed_domains is empty. "
+                "At least one source must be defined."
+            )
 
         if not queries:
             logger.info("No search queries generated. Skipping search.")

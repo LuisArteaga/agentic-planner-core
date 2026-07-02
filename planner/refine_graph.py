@@ -1,3 +1,4 @@
+from pathlib import Path
 from langgraph.graph import StateGraph, END
 from planner.state import AgentState, RefinementState
 from planner.nodes.analyze_sources import analyze_sources_node
@@ -17,11 +18,23 @@ refine_subgraph = subgraph_workflow.compile()
 
 # Define the Master Graph
 def run_refinement_subgraph_node(state: AgentState) -> dict:
-    """Master node that runs the Refinement Subgraph for each draft issue."""
-    # Proof of concept: run the subgraph on a mock issue
+    """Master node that runs the Refinement Subgraph for the current draft issue."""
+    idx = state.get("current_issue_index", 0)
+    draft_issues = state.get("draft_issues", [])
+
+    if idx >= len(draft_issues):
+        return {"status": "success"}
+
+    draft_path = Path(draft_issues[idx])
+    if not draft_path.exists():
+        raise FileNotFoundError(f"Draft issue file not found: {draft_path}")
+
+    with open(draft_path, "r", encoding="utf-8") as f:
+        draft_content = f.read()
+
     subgraph_input = {
-        "draft_issue_content": "Draft: Implement OpenRouter web search integration for the planner core.",
-        "strict_mode": state.get("strict_mode", True),
+        "draft_issue_content": draft_content,
+        "strict_mode": state.get("strict_mode", False),
         "allowed_domains": state.get("allowed_domains", []),
         "messages": [],
         "keywords": [],
@@ -36,12 +49,31 @@ def run_refinement_subgraph_node(state: AgentState) -> dict:
     # Execute the subgraph
     subgraph_output = refine_subgraph.invoke(subgraph_input)
 
-    return {"status": subgraph_output.get("status", "success")}
+    return {
+        "current_issue_index": idx + 1,
+        "status": subgraph_output.get("status", "success"),
+    }
+
+
+def should_continue(state: AgentState) -> str:
+    """Determines if there are more draft issues to process."""
+    idx = state.get("current_issue_index", 0)
+    draft_issues = state.get("draft_issues", [])
+    if idx < len(draft_issues):
+        return "run_refinement"
+    return END
 
 
 workflow = StateGraph(AgentState)
 workflow.add_node("run_refinement", run_refinement_subgraph_node)
 workflow.set_entry_point("run_refinement")
-workflow.add_edge("run_refinement", END)
+workflow.add_conditional_edges(
+    "run_refinement",
+    should_continue,
+    {
+        "run_refinement": "run_refinement",
+        END: END,
+    },
+)
 
 graph = workflow.compile()

@@ -161,3 +161,66 @@ class RefinementNodesTests(unittest.TestCase):
             tool_list[0]["parameters"]["allowed_domains"],
             ["github.com/langchain-ai/langgraph"],
         )
+
+    def test_analyze_sources_strict_empty_domains_raises(self):
+        state: RefinementState = {
+            "draft_issue_content": "Some draft",
+            "strict_mode": True,
+            "allowed_domains": [],
+            "messages": [],
+            "keywords": [],
+            "search_queries": [],
+            "search_results": [],
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "model_name": "",
+            "status": "idle",
+        }
+        with self.assertRaises(ValueError):
+            analyze_sources_node(state)
+
+    def test_web_search_strict_empty_domains_raises(self):
+        state: RefinementState = {
+            "draft_issue_content": "Some draft",
+            "strict_mode": True,
+            "allowed_domains": [],
+            "messages": [],
+            "keywords": ["test"],
+            "search_queries": ["test"],
+            "search_results": [],
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "model_name": "",
+            "status": "idle",
+        }
+        with self.assertRaises(ValueError):
+            web_search_node(state)
+
+    @patch("planner.refine_graph.refine_subgraph")
+    def test_master_graph_iteration(self, mock_subgraph):
+        mock_subgraph.invoke.return_value = {"status": "success"}
+
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            file_1 = Path(temp_dir) / "issue1.md"
+            file_2 = Path(temp_dir) / "issue2.md"
+            file_1.write_text("Draft issue 1 content", encoding="utf-8")
+            file_2.write_text("Draft issue 2 content", encoding="utf-8")
+
+            initial_state = {
+                "draft_issues": [str(file_1), str(file_2)],
+                "current_issue_index": 0,
+                "strict_mode": False,
+                "allowed_domains": [],
+                "status": "idle",
+            }
+
+            from planner.refine_graph import graph
+
+            result = graph.invoke(initial_state)
+
+            self.assertEqual(result["current_issue_index"], 2)
+            self.assertEqual(result["status"], "success")
+            self.assertEqual(mock_subgraph.invoke.call_count, 2)

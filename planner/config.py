@@ -32,7 +32,7 @@ def load_env_file(filepath: str = ".env") -> None:
 class SourcesConfig(BaseModel):
     """Pydantic schema for parsing and validating sources.yaml configuration."""
 
-    strict: bool = True
+    strict: bool = False
     repositories: List[str] = Field(default_factory=list)
     domains: List[str] = Field(default_factory=list)
 
