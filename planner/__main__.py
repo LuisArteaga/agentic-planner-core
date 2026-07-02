@@ -1,6 +1,15 @@
 import argparse
+import glob
 import sys
+from pathlib import Path
 from planner.config import AppConfig
+from planner.refine_graph import graph
+from scripts.telemetry import (
+    end_orchestrator_loop,
+    init_telemetry,
+    orchestrator_phase,
+    start_orchestrator_loop,
+)
 
 
 def main():
@@ -22,13 +31,6 @@ def main():
     args = parser.parse_args()
 
     if args.command == "refine":
-        from scripts.telemetry import (
-            init_telemetry,
-            start_orchestrator_loop,
-            end_orchestrator_loop,
-            orchestrator_phase,
-        )
-
         init_telemetry()
         start_orchestrator_loop()
         exit_code = 0
@@ -39,6 +41,57 @@ def main():
                 print("Configuration loaded successfully.")
                 print(f"Target Repository: {config.github_repository}")
                 print(f"Strict Mode: {config.sources.strict}")
+
+                # 1. Resolve drafts directory path
+                drafts_base = Path(config.github_workspace) / ".planner" / "drafts"
+                repo_full_path = drafts_base / config.github_repository
+                repo_short_path = drafts_base / Path(config.github_repository).name
+
+                drafts_dir = (
+                    repo_full_path if repo_full_path.exists() else repo_short_path
+                )
+
+                # Check for files
+                draft_files = []
+                if drafts_dir.exists():
+                    draft_files = sorted(glob.glob(str(drafts_dir / "*.md")))
+
+                print(f"Found {len(draft_files)} draft issues in {drafts_dir}")
+
+                # 2. Format whitelisted domains / repositories
+                allowed_domains = []
+                for domain in config.sources.domains:
+                    if domain:
+                        allowed_domains.append(domain.strip().lower())
+                for repo in config.sources.repositories:
+                    if repo:
+                        allowed_domains.append(f"github.com/{repo.strip().lower()}")
+
+                # 3. Build initial state
+                initial_state = {
+                    "draft_issues": draft_files,
+                    "current_issue_index": 0,
+                    "strict_mode": config.sources.strict,
+                    "allowed_domains": allowed_domains,
+                    "status": "idle",
+                }
+
+                # Abort at startup if strict mode is enabled but whitelist is empty
+                if config.sources.strict and not allowed_domains:
+                    raise ValueError(
+                        "Strict-mode is enabled (strict: true), but allowed_domains is empty. "
+                        "At least one source must be defined."
+                    )
+
+                # 4. Invoke graph
+                if draft_files:
+                    print("Starting refinement process...")
+                    result = graph.invoke(initial_state)
+                    print(
+                        f"Refinement process finished with status: {result.get('status')}"
+                    )
+                else:
+                    print("No draft issues found. Nothing to refine.")
         except Exception as e:
             print(f"Error: {e}", file=sys.stderr)
             exit_code = 1
