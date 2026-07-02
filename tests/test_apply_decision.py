@@ -53,6 +53,7 @@ class ApplyDecisionTests(unittest.TestCase):
         mock_output = ApplyDecisionOutput(
             requires_agdr=True,
             agdr_title="use-sqlite-cache",
+            y_statement="In the context of caching, facing high latency, we decided to use sqlite to achieve speed.",
             agdr_content="## Kontext und Problemstellung\nWe choose SQLite.",
             updated_issue_content="## What to build\nEnriched what to build.",
         )
@@ -116,6 +117,10 @@ class ApplyDecisionTests(unittest.TestCase):
             )
             self.assertIn("* **Trigger-Issue**: 0005-issue.md", agdr_content)
             self.assertIn(
+                "* **Y-Statement**: In the context of caching, facing high latency, we decided to use sqlite to achieve speed.",
+                agdr_content,
+            )
+            self.assertIn(
                 "## Kontext und Problemstellung\nWe choose SQLite.", agdr_content
             )
 
@@ -131,6 +136,7 @@ class ApplyDecisionTests(unittest.TestCase):
         mock_output = ApplyDecisionOutput(
             requires_agdr=False,
             agdr_title="",
+            y_statement="",
             agdr_content="",
             updated_issue_content="## What to build\nOriginal content.",  # identical
         )
@@ -184,34 +190,18 @@ class ApplyDecisionTests(unittest.TestCase):
             self.assertFalse((workspace / "docs" / "agdr").exists())
 
     @patch("planner.nodes.apply_decision.ChatOpenAI")
-    def test_apply_decision_io_error_raises(self, mock_chat_openai):
-        mock_instance = MagicMock()
-        mock_chat_openai.return_value = mock_instance
-
-        mock_structured_model = MagicMock()
-        mock_instance.with_structured_output.return_value = mock_structured_model
-
-        mock_output = ApplyDecisionOutput(
-            requires_agdr=True,
-            agdr_title="error-trigger",
-            agdr_content="## Kontext und Problemstellung\nBoom.",
-            updated_issue_content="## What to build\nBoom.",
-        )
-        mock_structured_model.invoke.return_value = {
-            "parsed": mock_output,
-            "raw": MagicMock(),
-        }
-
+    def test_apply_decision_path_traversal_raises(self, mock_chat_openai):
+        # We don't even call ChatOpenAI if path validation fails
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
             os.environ["GITHUB_WORKSPACE"] = str(workspace)
 
-            draft_issue = workspace / "0005-issue.md"
-            draft_issue.write_text("original", encoding="utf-8")
+            # Define a path pointing outside workspace (using path traversal or root file)
+            outside_path = "/etc/passwd"  # absolute path outside GITHUB_WORKSPACE
 
             state: RefinementState = {
-                "draft_issue_content": "original",
-                "draft_issue_path": str(draft_issue),
+                "draft_issue_content": "some content",
+                "draft_issue_path": outside_path,
                 "strict_mode": True,
                 "allowed_domains": [],
                 "messages": [],
@@ -221,13 +211,14 @@ class ApplyDecisionTests(unittest.TestCase):
                 "prompt_tokens": 0,
                 "completion_tokens": 0,
                 "model_name": "",
-                "status": "success",
+                "status": "idle",
                 "proposed_options": [],
                 "best_option": {},
                 "all_grades": [],
             }
 
-            # Mock file writing to raise IOError
-            with patch("builtins.open", side_effect=IOError("Permission denied")):
-                with self.assertRaises(IOError):
-                    apply_decision_node(state)
+            # Should raise ValueError indicating path traversal
+            with self.assertRaises(ValueError) as context:
+                apply_decision_node(state)
+
+            self.assertIn("Path traversal detected", str(context.exception))

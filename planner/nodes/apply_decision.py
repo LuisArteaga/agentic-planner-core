@@ -23,6 +23,9 @@ class ApplyDecisionOutput(BaseModel):
     agdr_title: str = Field(
         description="A short kebab-case title slug for the new AgDR (e.g., 'use-sqlite-cache'). Empty if requires_agdr is false."
     )
+    y_statement: str = Field(
+        description="A single-sentence summary of the decision following the pattern: 'In the context of [situation], facing [concern], we decided [decision] to achieve [result].' Empty if requires_agdr is false."
+    )
     agdr_content: str = Field(
         description="The content of the AgDR in markdown format, starting directly with the section '## Kontext und Problemstellung'. Empty if requires_agdr is false."
     )
@@ -65,12 +68,21 @@ def apply_decision_node(state: RefinementState) -> Dict[str, Any]:
             logger.warning("No draft_issue_path set in state. Skipping file updates.")
             return {"status": "success"}
 
+        workspace_dir = Path(os.environ.get("GITHUB_WORKSPACE", os.getcwd())).resolve()
+
+        # Resolve and validate draft issue path to prevent Path Traversal
         draft_path = Path(draft_path_str).resolve()
+        try:
+            draft_path.relative_to(workspace_dir)
+        except ValueError:
+            raise ValueError(
+                f"Path traversal detected: draft issue path {draft_path} is outside GITHUB_WORKSPACE {workspace_dir}"
+            )
+
         if not draft_path.exists():
             raise FileNotFoundError(f"Draft issue file does not exist: {draft_path}")
 
         # 1. Load existing ADRs and AgDRs to provide context to the LLM
-        workspace_dir = Path(os.environ.get("GITHUB_WORKSPACE", os.getcwd()))
         existing_adrs = load_adrs(str(workspace_dir / "docs" / "adr"))
         existing_agdrs = load_adrs(str(workspace_dir / "docs" / "agdr"))
 
@@ -102,8 +114,10 @@ def apply_decision_node(state: RefinementState) -> Dict[str, Any]:
             "An AgDR is required if the decision is hard to reverse, surprising without context, or the result of a real trade-off.\n\n"
             "CRITICAL INSTRUCTIONS:\n"
             "1. Evaluate if the chosen option requires an AgDR. Set 'requires_agdr' accordingly.\n"
-            "2. If requires_agdr is true, generate 'agdr_title' (a short kebab-case title slug, e.g. 'use-sqlite-cache') and 'agdr_content'.\n"
-            "   The 'agdr_content' MUST follow the standard AgDR format starting with '## Kontext und Problemstellung'. DO NOT include the main title (#) or the metadata list at the top, as those will be prepended by the system.\n"
+            "2. If requires_agdr is true, generate 'agdr_title' (a short kebab-case title slug, e.g. 'use-sqlite-cache'), "
+            "   'y_statement', and 'agdr_content'.\n"
+            "   - 'y_statement' MUST strictly follow the pattern: 'In the context of [situation], facing [concern], we decided [decision] to achieve [result].'\n"
+            "   - 'agdr_content' MUST follow the standard AgDR format starting with '## Kontext und Problemstellung'. DO NOT include the main title (#) or the metadata list at the top, as those will be prepended by the system.\n"
             "3. Rewrite the draft issue content. You MUST strictly preserve all the original section headers and structure (e.g. ## What to build, ## Scope, ## Constraints, ## Edge cases, ## Acceptance criteria).\n"
             "   Enrich the contents of these sections with:\n"
             "   - Research findings (citing search results and URLs).\n"
@@ -214,7 +228,15 @@ def apply_decision_node(state: RefinementState) -> Dict[str, Any]:
                 title_slug = "decision"
 
             agdr_filename = f"{num_str}-{title_slug}.md"
-            agdr_path = agdr_dir / agdr_filename
+            agdr_path = (agdr_dir / agdr_filename).resolve()
+
+            # Validate path containment to prevent path traversal
+            try:
+                agdr_path.relative_to(workspace_dir)
+            except ValueError:
+                raise ValueError(
+                    f"Path traversal detected: AgDR path {agdr_path} is outside GITHUB_WORKSPACE {workspace_dir}"
+                )
 
             # Format AgDR Header Metadata
             best_score = best_option.get("score", 0.0)
@@ -238,7 +260,8 @@ def apply_decision_node(state: RefinementState) -> Dict[str, Any]:
                 f"* **Datum**: {today}\n"
                 f"* **Entscheidungsträger**: {critic_model_name}\n"
                 f"* **Trace-ID**: {trace_id}\n"
-                f"* **Trigger-Issue**: {trigger_issue}\n\n"
+                f"* **Trigger-Issue**: {trigger_issue}\n"
+                f"* **Y-Statement**: {response_data.y_statement.strip()}\n\n"
             )
 
             full_agdr_content = header + response_data.agdr_content.strip() + "\n"
