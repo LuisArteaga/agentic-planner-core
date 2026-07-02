@@ -40,3 +40,13 @@ Dieses Dokument definiert die fachliche Terminologie für diesen Kontext. Es dar
   * Im Strict-Modus werden Recherchen ausschließlich innerhalb der konfigurierten Quellen durchgeführt, um die Einschleusung unkontrollierter oder verfälschter Fremdinformationen zu verhindern.
   * Ist der Strict-Modus aktiviert, müssen zwingend erlaubte Quellen (Repositories oder Domains) definiert sein; andernfalls bricht das System den Start mit einem Fehler ab.
 * **Synonyme / Abzugrenzende Begriffe**: Nicht zu verwechseln mit der allgemeinen Systemkonfiguration des Planners (wie Modellauswahl oder Zugriffsschlüssel).
+
+### Agenten-Architekturentscheidung (Agent Decision Record - AgDR)
+* **Definition**: Ein durch den autonomen Planungsprozess erstelltes Dokument zur Festhaltung wesentlicher technischer Richtungsentscheidungen. Es erweitert klassische ADRs um strukturierte Agenten-Metadaten und dient zukünftigen Entwicklungsschritten sowie menschlichen Entwicklern als historische Wissensbasis.
+* **Geschäftsregeln**:
+  * Jedes AgDR muss zwingend ein standardisiertes **Y-Statement** zur Kurzzusammenfassung der Entscheidung enthalten.
+  * Das Dokument muss die evaluierten Alternativen (Optionen-Matrix) sowie die genauen Bewertungsgründe dokumentieren.
+  * Zu den Pflicht-Metadaten gehören: das auswertende Kritik-Modell (`Model`), die Langfuse-Trace-ID (`Trace-ID`) sowie die auslösende Aufgabe (`Trigger-Issue`).
+  * AgDR-Dokumente werden im Ziel-Repository im Verzeichnis `docs/agdr/` abgelegt.
+* **Synonyme / Abzugrenzende Begriffe**: Abzugrenzen von klassischen, rein manuell durch menschliche Architekten erstellten Architekturentscheidungen (ADR).
+

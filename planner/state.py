@@ -6,6 +6,7 @@ class RefinementState(TypedDict):
 
     # Inputs passed from the master graph
     draft_issue_content: str
+    draft_issue_path: str
     strict_mode: bool
     allowed_domains: List[str]
 
