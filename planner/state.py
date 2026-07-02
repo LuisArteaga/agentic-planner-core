@@ -27,6 +27,11 @@ class RefinementState(TypedDict):
     # Status track
     status: str  # "success", "failed"
 
+    # Critic Grading fields
+    proposed_options: List[Dict[str, Any]]
+    best_option: Dict[str, Any]
+    all_grades: List[Dict[str, Any]]
+
 
 class AgentState(TypedDict):
     """State schema for the Master Graph."""
