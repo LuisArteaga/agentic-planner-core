@@ -25,14 +25,19 @@ Es wird ein lokales Dummy-Tool namens `web_search` definiert.
 * **Vorteil**: Nutzt das Standard-Tool-Binding von LangChain.
 * **Nachteil**: Keine Möglichkeit, OpenRouter-spezifische Parameter wie `allowed_domains` für den Strict-Modus sicher im API-Payload zu konfigurieren.
 
-### Option 3: Eigene `ChatOpenRouter`-Klasse mit `bind_tools` Override (Gewählt)
+### Option 3: Eigene `ChatOpenRouter`-Klasse mit `bind_tools` Override
 Wir erstellen eine Unterklasse von `ChatOpenAI`, die `bind_tools` überschreibt. Wenn sie ein OpenRouter Server-Side Tool erkennt, bindet sie dieses direkt über `self.bind(tools=[...])` ohne die standardmäßige Funktions-Validierung von LangChain.
 * **Vorteil**: Ermöglicht die dynamische Tool-Bindung im Code, schützt die Parameter-Injektion für den Strict-Modus und bypass-t die Validierung fehlerfrei.
-* **Nachteil**: Koppelung an die interne Struktur von LangChains `bind()` Methode (Rückgabe von `RunnableBinding`).
+* **Nachteil**: Koppelung an die interne Struktur von LangChains `bind()` Methode (Rückgabe von `RunnableBinding`) und zusätzliche eigene Abstraktionsschicht.
+
+### Option 4: Direktes Parameter-Binding (`model.bind(tools=[...])`) auf Standard-`ChatOpenAI` (Gewählt)
+Wir instanziieren standardmäßig `ChatOpenAI` mit dem OpenRouter-Endpunkt und binden die Tools direkt per `.bind(tools=[tool_definition], tool_choice=...)` anstelle von `.bind_tools(...)`.
+* **Vorteil**: Bypasst die standardmäßige OpenAI-Validierung in `bind_tools`, erhält die dynamische Bindung, unterstützt `allowed_domains` für den Strict-Modus und benötigt absolut keine eigene Subklasse oder benutzerdefinierten Code.
+* **Nachteil**: Keine Typsicherheit bei Tool-Parametern über Pydantic (da direkt JSON-Dictionaries übergeben werden), was in diesem Fall jedoch unproblematisch ist, da die Tool-Spezifikation für `openrouter:web_search` ohnehin ein vordefiniertes JSON ist.
 
 ## Entscheidung
-Wir wählen **Option 3**. Die Klasse `ChatOpenRouter` überschreibt `bind_tools` und leitet OpenRouter Server-Tools direkt an die `bind`-Methode weiter.
+Wir wählen **Option 4** (Direktes Parameter-Binding per `model.bind`). Option 3 wurde ursprünglich gewählt, aber zugunsten von Option 4 verworfen, da eine eigene Subklasse unnötige Komplexität und eine enge Kopplung an LangChain-Internals einführen würde (Verstoß gegen Radical Simplicity / Lazy Coding).
 
 ## Konsequenzen
-* **Positiv**: Das Tool `openrouter:web_search` wird erfolgreich gebunden und auf OpenRouter-Servern ausgeführt. Der Strict-Modus wird durch Parameter-Injektion voll unterstützt.
-* **Negativ**: Zukünftige LangChain-Updates, die die Signatur oder das Verhalten von `bind` verändern, könnten diese Koppelung brechen und Anpassungen erfordern.
+* **Positiv**: Maximale Einfachheit. Kein benutzerdefinierter Wrapper-Code zu warten. Das Tool `openrouter:web_search` wird erfolgreich gebunden und auf den OpenRouter-Servern ausgeführt. Der Strict-Modus wird durch Parameter-Injektion voll unterstützt.
+* **Negativ**: Manuelle Definition der Tool-Payload-Struktur im Code, was für das statische OpenRouter-Such-Tool jedoch vernachlässigbar ist.

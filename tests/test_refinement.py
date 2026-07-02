@@ -18,7 +18,7 @@ class RefinementNodesTests(unittest.TestCase):
         os.environ.clear()
         os.environ.update(self.original_env)
 
-    @patch("planner.nodes.analyze_sources.ChatOpenRouter")
+    @patch("planner.nodes.analyze_sources.ChatOpenAI")
     def test_analyze_sources_strict_mode(self, mock_chat_router):
         # Setup mock model output
         mock_instance = MagicMock()
@@ -61,7 +61,7 @@ class RefinementNodesTests(unittest.TestCase):
         self.assertEqual(output["prompt_tokens"], 15)
         self.assertEqual(output["completion_tokens"], 20)
 
-    @patch("planner.nodes.analyze_sources.ChatOpenRouter")
+    @patch("planner.nodes.analyze_sources.ChatOpenAI")
     def test_analyze_sources_non_strict_mode(self, mock_chat_router):
         mock_instance = MagicMock()
         mock_chat_router.return_value = mock_instance
@@ -99,7 +99,7 @@ class RefinementNodesTests(unittest.TestCase):
         self.assertIn("github.com/langchain-ai/langgraph", output["allowed_domains"])
         self.assertIn("github.com/swe-agent/swe-agent", output["allowed_domains"])
 
-    @patch("planner.nodes.web_search.ChatOpenRouter")
+    @patch("planner.nodes.web_search.ChatOpenAI")
     def test_web_search_execution(self, mock_chat_router):
         mock_instance = MagicMock()
         mock_chat_router.return_value = mock_instance
@@ -123,7 +123,7 @@ class RefinementNodesTests(unittest.TestCase):
         }
 
         mock_bind = MagicMock()
-        mock_instance.bind_tools.return_value = mock_bind
+        mock_instance.bind.return_value = mock_bind
         mock_bind.invoke.return_value = mock_response
 
         state: RefinementState = {
@@ -152,10 +152,10 @@ class RefinementNodesTests(unittest.TestCase):
         self.assertEqual(output["prompt_tokens"], 110)  # 10 + 100
         self.assertEqual(output["completion_tokens"], 170)  # 20 + 150
 
-        # Verify tool binding was called with correct parameters
-        mock_instance.bind_tools.assert_called_once()
-        args, kwargs = mock_instance.bind_tools.call_args
-        tool_list = args[0]
+        # Verify tool binding was called with correct parameters via bind()
+        mock_instance.bind.assert_called_once()
+        _, kwargs = mock_instance.bind.call_args
+        tool_list = kwargs.get("tools", [])
         self.assertEqual(tool_list[0]["type"], "openrouter:web_search")
         self.assertEqual(
             tool_list[0]["parameters"]["allowed_domains"],

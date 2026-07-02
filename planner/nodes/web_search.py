@@ -5,7 +5,7 @@ import logging
 from typing import Dict, Any
 from langchain_core.messages import SystemMessage, HumanMessage
 from planner.state import RefinementState
-from planner.models import ChatOpenRouter
+from langchain_openai import ChatOpenAI
 from scripts.telemetry import orchestrator_phase
 
 logger = logging.getLogger("planner.nodes.web_search")
@@ -42,9 +42,14 @@ def web_search_node(state: RefinementState) -> Dict[str, Any]:
             logger.info("No search queries generated. Skipping search.")
             return {"search_results": [], "status": "success"}
 
-        # Instantiate OpenRouter client
+        # Instantiate LangChain ChatOpenAI client configured for OpenRouter
         model_name = os.getenv("AGENT_MODEL", "google/gemini-2.5-flash")
-        model = ChatOpenRouter(model=model_name, temperature=0.0)
+        model = ChatOpenAI(
+            model=model_name,
+            temperature=0.0,
+            openai_api_base="https://openrouter.ai/api/v1",
+            openai_api_key=os.getenv("OPENROUTER_API_KEY"),
+        )
 
         # Build tool definition
         tool_definition = {
@@ -56,9 +61,10 @@ def web_search_node(state: RefinementState) -> Dict[str, Any]:
         if allowed_domains:
             tool_definition["parameters"]["allowed_domains"] = allowed_domains
 
-        # Bind tool and force the tool choice to guarantee search execution
-        llm_with_tools = model.bind_tools(
-            [tool_definition], tool_choice={"type": "openrouter:web_search"}
+        # Bind tool and force the tool choice to guarantee search execution using direct bind
+        llm_with_tools = model.bind(
+            tools=[tool_definition],
+            tool_choice={"type": "openrouter:web_search"},
         )
 
         # Instruct the model to perform the search and return structured output
