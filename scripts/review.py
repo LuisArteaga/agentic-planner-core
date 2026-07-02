@@ -239,22 +239,36 @@ def submit_github_review(pr_number, action, body_content):
             "body_content": body_content
         }))
         
-        # Get PR Author
+        # Get PR Author with REST API fallback and soft failure
+        pr_author = ""
         pr_author_cmd = ["gh", "pr", "view", pr_number, "--json", "author", "--jq", ".author.login"]
         ret, stdout, stderr = run_command(pr_author_cmd)
-        if ret != 0:
-            raise Exception(f"Failed to fetch PR author: {stderr.strip()}")
-        pr_author = stdout.strip()
+        if ret == 0:
+            pr_author = stdout.strip()
+        else:
+            log(f"[WARN] Failed to fetch PR author via GraphQL: {stderr.strip()}. Trying REST API...")
+            repo = os.getenv("GITHUB_REPOSITORY")
+            if repo:
+                rest_cmd = ["gh", "api", f"repos/{repo}/pulls/{pr_number}", "--jq", ".user.login"]
+                ret_rest, stdout_rest, stderr_rest = run_command(rest_cmd)
+                if ret_rest == 0:
+                    pr_author = stdout_rest.strip()
+                else:
+                    log(f"[WARN] Failed to fetch PR author via REST API: {stderr_rest.strip()}")
+            else:
+                log("[WARN] GITHUB_REPOSITORY not set. Cannot fallback to REST API.")
         
-        # Get Current User
+        # Get Current User with soft failure
+        current_user = ""
         user_cmd = ["gh", "api", "user", "--jq", ".login"]
         ret, stdout, stderr = run_command(user_cmd)
-        if ret != 0:
-            raise Exception(f"Failed to fetch current user: {stderr.strip()}")
-        current_user = stdout.strip()
+        if ret == 0:
+            current_user = stdout.strip()
+        else:
+            log(f"[WARN] Failed to fetch current user: {stderr.strip()}")
         
         # Determine appropriate review action flag
-        if current_user == pr_author:
+        if current_user and pr_author and current_user == pr_author:
             action_flag = "--comment"
         elif action == "approve":
             action_flag = "--approve"
