@@ -15,6 +15,7 @@ class PublishNodeTests(unittest.TestCase):
         os.environ["GH_PAT"] = "mock-token"
         os.environ["GITHUB_REPOSITORY"] = "org/repo"
         os.environ["AGENT_LABEL_READY"] = "agent-ready"
+        os.environ["OPENROUTER_API_KEY"] = "mock-openrouter-key"
 
     def tearDown(self):
         os.environ.clear()
@@ -34,7 +35,7 @@ class PublishNodeTests(unittest.TestCase):
         self.assertEqual(title, "Implement Feature")
         self.assertEqual(body, content.strip())
 
-    @patch("planner.nodes.publish_issue.Github")
+    @patch("planner.config.Github")
     @patch("planner.nodes.publish_issue.time.sleep")
     def test_publish_issue_node_success(self, mock_sleep, mock_github_class):
         # Setup mocks for PyGithub
@@ -55,6 +56,7 @@ class PublishNodeTests(unittest.TestCase):
 
         # Create a temp file to simulate the draft
         with tempfile.TemporaryDirectory() as temp_dir:
+            os.environ["GITHUB_WORKSPACE"] = temp_dir
             draft_file = Path(temp_dir) / "0001-test-issue.md"
             draft_file.write_text("# Test Issue\nThis is content", encoding="utf-8")
 
@@ -88,7 +90,7 @@ class PublishNodeTests(unittest.TestCase):
             self.assertFalse(draft_file.exists())
             mock_sleep.assert_called_once()
 
-    @patch("planner.nodes.publish_issue.Github")
+    @patch("planner.config.Github")
     def test_publish_issue_node_missing_label_created(self, mock_github_class):
         mock_github = MagicMock()
         mock_github_class.return_value = mock_github
@@ -192,7 +194,7 @@ class MasterGraphErrorHandlingTests(unittest.TestCase):
 class MainRateLimitTests(unittest.TestCase):
     @patch("planner.__main__.graph")
     @patch("planner.__main__.AppConfig")
-    @patch("github.Github")
+    @patch("planner.config.Github")
     @patch("planner.__main__.glob.glob")
     @patch("planner.__main__.Path")
     def test_main_insufficient_rate_limit_aborts(

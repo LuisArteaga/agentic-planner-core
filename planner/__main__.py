@@ -85,16 +85,7 @@ def main():
 
                 # 4. Invoke graph
                 if draft_files:
-                    from github import Github, Auth, GithubRetry
-
-                    auth = Auth.Token(config.gh_pat)
-                    retry_strategy = GithubRetry(
-                        total=5,
-                        status_forcelist=[403, 500, 502, 503, 504],
-                        backoff_factor=1.0,
-                        secondary_rate_wait=10.0,
-                    )
-                    g = Github(auth=auth, retry=retry_strategy)
+                    g = config.get_github_client()
 
                     print("Checking GitHub API rate limit quota...")
                     rate_limit = g.get_rate_limit()

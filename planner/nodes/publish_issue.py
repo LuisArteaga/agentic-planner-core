@@ -2,10 +2,11 @@ import os
 import time
 import random
 import logging
+from pathlib import Path
 from typing import Dict, Any
-from github import Github, Auth, GithubRetry
 from planner.state import RefinementState
 from scripts.telemetry import orchestrator_phase
+from planner.config import AppConfig
 
 logger = logging.getLogger("planner.nodes.publish_issue")
 
@@ -45,32 +46,16 @@ def publish_issue_node(state: RefinementState) -> Dict[str, Any]:
 
         title, body = extract_title_and_body(content, filepath)
 
-        # Connect to GitHub API
-        gh_pat = os.environ.get("GH_PAT") or os.environ.get("GH_TOKEN")
-        repo_name = os.environ.get("GITHUB_REPOSITORY")
+        # 1. Initialize configuration and get GitHub client consistently
+        config = AppConfig()
+        g = config.get_github_client()
+        repo_name = config.github_repository
+        workspace_dir = Path(config.github_workspace).resolve()
 
-        if not gh_pat:
-            raise ValueError(
-                "Missing GitHub Personal Access Token (GH_PAT or GH_TOKEN) in environment."
-            )
-        if not repo_name:
-            raise ValueError(
-                "Missing target GitHub repository (GITHUB_REPOSITORY) in environment."
-            )
-
-        auth = Auth.Token(gh_pat)
-        retry_strategy = GithubRetry(
-            total=5,
-            status_forcelist=[403, 500, 502, 503, 504],
-            backoff_factor=1.0,
-            secondary_rate_wait=10.0,
-        )
-        g = Github(auth=auth, retry=retry_strategy)
-
-        # Get repo object
+        # 2. Get repo object
         repo = g.get_repo(repo_name)
 
-        # Resolve ready label
+        # 3. Resolve ready label
         label_name = os.environ.get("AGENT_LABEL_READY", "agent-ready")
         try:
             label = repo.get_label(label_name)
@@ -84,7 +69,7 @@ def publish_issue_node(state: RefinementState) -> Dict[str, Any]:
                 description="Ready for autonomous developer loop execution",
             )
 
-        # Publish the issue
+        # 4. Publish the issue
         logger.info(f"Creating GitHub issue: '{title}'...")
         issue = repo.create_issue(
             title=title,
@@ -98,12 +83,21 @@ def publish_issue_node(state: RefinementState) -> Dict[str, Any]:
         logger.debug(f"Applying artificial jitter of {jitter:.2f} seconds...")
         time.sleep(jitter)
 
-        # Remove local draft file after successful publish
-        if filepath and os.path.exists(filepath):
+        # 5. Validate and remove local draft file to prevent Path Traversal
+        if filepath:
+            draft_path = Path(filepath).resolve()
             try:
-                os.remove(filepath)
-                logger.info(f"Successfully deleted local draft file: {filepath}")
-            except Exception as e:
-                logger.warning(f"Could not delete draft file {filepath}: {e}")
+                draft_path.relative_to(workspace_dir)
+            except ValueError:
+                raise ValueError(
+                    f"Path traversal detected: draft issue path {draft_path} is outside GITHUB_WORKSPACE {workspace_dir}"
+                )
+
+            if draft_path.exists():
+                try:
+                    os.remove(draft_path)
+                    logger.info(f"Successfully deleted local draft file: {draft_path}")
+                except Exception as e:
+                    logger.warning(f"Could not delete draft file {draft_path}: {e}")
 
         return {"status": "success"}
