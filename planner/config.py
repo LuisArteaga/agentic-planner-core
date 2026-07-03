@@ -3,6 +3,9 @@ import pathlib
 from typing import List
 import yaml
 from pydantic import BaseModel, Field, model_validator
+import requests
+from urllib3.util import Retry
+from requests.adapters import HTTPAdapter
 
 
 def load_env_file(filepath: str = ".env") -> None:
@@ -55,7 +58,7 @@ class AppConfig:
 
         # Validate system environment variables
         self.openrouter_api_key = os.environ.get("OPENROUTER_API_KEY")
-        self.gh_pat = os.environ.get("GH_PAT")
+        self.gh_pat = os.environ.get("GH_PAT") or os.environ.get("GH_TOKEN")
         self.github_repository = os.environ.get("GITHUB_REPOSITORY")
         # Default workspace to current directory if not set
         self.github_workspace = os.environ.get("GITHUB_WORKSPACE", os.getcwd())
@@ -64,7 +67,7 @@ class AppConfig:
         if not self.openrouter_api_key:
             missing.append("OPENROUTER_API_KEY")
         if not self.gh_pat:
-            missing.append("GH_PAT")
+            missing.append("GH_PAT/GH_TOKEN")
         if not self.github_repository:
             missing.append("GITHUB_REPOSITORY")
 
@@ -91,3 +94,21 @@ class AppConfig:
             self.sources = SourcesConfig.model_validate(data)
         except Exception as e:
             raise ValueError(f"Configuration validation failed: {e}")
+
+    def get_github_session(self) -> requests.Session:
+        """Returns a requests.Session configured with a robust retry strategy and auth headers."""
+        session = requests.Session()
+        session.headers.update(
+            {
+                "Authorization": f"Bearer {self.gh_pat}",
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28",
+            }
+        )
+        retries = Retry(
+            total=5,
+            backoff_factor=1,
+            status_forcelist=[403, 429, 500, 502, 503, 504],
+        )
+        session.mount("https://", HTTPAdapter(max_retries=retries))
+        return session
