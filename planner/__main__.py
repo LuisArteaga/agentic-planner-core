@@ -85,6 +85,31 @@ def main():
 
                 # 4. Invoke graph
                 if draft_files:
+                    from github import Github, Auth, GithubRetry
+
+                    auth = Auth.Token(config.gh_pat)
+                    retry_strategy = GithubRetry(
+                        total=5,
+                        status_forcelist=[403, 500, 502, 503, 504],
+                        backoff_factor=1.0,
+                        secondary_rate_wait=10.0,
+                    )
+                    g = Github(auth=auth, retry=retry_strategy)
+
+                    print("Checking GitHub API rate limit quota...")
+                    rate_limit = g.get_rate_limit()
+                    remaining = rate_limit.core.remaining
+                    required = max(50, len(draft_files) * 3)
+                    print(
+                        f"GitHub API quota remaining: {remaining} (required: {required})"
+                    )
+
+                    if remaining < required:
+                        raise ValueError(
+                            f"Insufficient GitHub API rate limit quota. "
+                            f"Remaining: {remaining}, required: {required}."
+                        )
+
                     print("Starting refinement process...")
                     result = graph.invoke(initial_state)
                     print(

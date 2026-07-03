@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 from langgraph.graph import StateGraph, END
 from planner.state import AgentState, RefinementState
@@ -6,6 +7,9 @@ from planner.nodes.web_search import web_search_node
 from planner.nodes.propose_options import propose_options_node
 from planner.nodes.evaluate_grade import evaluate_grade_node
 from planner.nodes.apply_decision import apply_decision_node
+from planner.nodes.publish_issue import publish_issue_node
+
+logger = logging.getLogger("planner.refine_graph")
 
 # Define and compile the Refinement Subgraph
 subgraph_workflow = StateGraph(RefinementState)
@@ -14,13 +18,15 @@ subgraph_workflow.add_node("web_search", web_search_node)
 subgraph_workflow.add_node("propose_options", propose_options_node)
 subgraph_workflow.add_node("evaluate_grade", evaluate_grade_node)
 subgraph_workflow.add_node("apply_decision", apply_decision_node)
+subgraph_workflow.add_node("publish_issue", publish_issue_node)
 
 subgraph_workflow.set_entry_point("analyze_sources")
 subgraph_workflow.add_edge("analyze_sources", "web_search")
 subgraph_workflow.add_edge("web_search", "propose_options")
 subgraph_workflow.add_edge("propose_options", "evaluate_grade")
 subgraph_workflow.add_edge("evaluate_grade", "apply_decision")
-subgraph_workflow.add_edge("apply_decision", END)
+subgraph_workflow.add_edge("apply_decision", "publish_issue")
+subgraph_workflow.add_edge("publish_issue", END)
 
 refine_subgraph = subgraph_workflow.compile()
 
@@ -60,11 +66,16 @@ def run_refinement_subgraph_node(state: AgentState) -> dict:
     }
 
     # Execute the subgraph
-    subgraph_output = refine_subgraph.invoke(subgraph_input)
+    try:
+        subgraph_output = refine_subgraph.invoke(subgraph_input)
+        status = subgraph_output.get("status", "success")
+    except Exception as e:
+        logger.error(f"Error processing draft issue {draft_path}: {e}", exc_info=True)
+        status = "failed"
 
     return {
         "current_issue_index": idx + 1,
-        "status": subgraph_output.get("status", "success"),
+        "status": status,
     }
 
 
