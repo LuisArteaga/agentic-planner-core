@@ -21,19 +21,13 @@ def extract_title_and_body(content: str, filepath: str) -> tuple[str, str]:
             body = "\n".join(lines[idx + 1 :]).strip()
             return title, body
 
-    # Fallback to file name if no H1 header found
-    filename = os.path.basename(filepath)
-    name_without_ext = os.path.splitext(filename)[0]
-    parts = [p for p in name_without_ext.split("-") if p]
-    # Remove leading sequence number if present (e.g., 0001)
-    if parts and parts[0].isdigit():
-        parts = parts[1:]
-    title = " ".join(parts).title()
+    # Fallback to plain filename without extension (unnecessary complexity removed)
+    title = os.path.splitext(os.path.basename(filepath))[0]
     return title, content.strip()
 
 
 def publish_issue_node(state: RefinementState) -> Dict[str, Any]:
-    """Publishes the refined issue to GitHub using PyGithub and deletes the local draft file."""
+    """Publishes the refined issue to GitHub using requests and deletes the local draft file."""
     logger.info("Running publish_issue node...")
 
     with orchestrator_phase("publish_issue"):
@@ -46,44 +40,62 @@ def publish_issue_node(state: RefinementState) -> Dict[str, Any]:
 
         title, body = extract_title_and_body(content, filepath)
 
-        # 1. Initialize configuration and get GitHub client consistently
+        # 1. Initialize configuration and get GitHub session consistently
         config = AppConfig()
-        g = config.get_github_client()
+        session = config.get_github_session()
         repo_name = config.github_repository
         workspace_dir = Path(config.github_workspace).resolve()
 
-        # 2. Get repo object
-        repo = g.get_repo(repo_name)
-
-        # 3. Resolve ready label
+        # 2. Resolve ready label
         label_name = os.environ.get("AGENT_LABEL_READY", "agent-ready")
+        label_url = f"https://api.github.com/repos/{repo_name}/labels/{label_name}"
+
         try:
-            label = repo.get_label(label_name)
-        except Exception:
-            logger.info(
-                f"Label '{label_name}' not found. Creating it in the target repository..."
-            )
-            label = repo.create_label(
-                name=label_name,
-                color="0e8a16",  # Green color
-                description="Ready for autonomous developer loop execution",
+            label_response = session.get(label_url)
+            if label_response.status_code == 404:
+                logger.info(
+                    f"Label '{label_name}' not found. Creating it in the target repository..."
+                )
+                create_label_url = f"https://api.github.com/repos/{repo_name}/labels"
+                res = session.post(
+                    create_label_url,
+                    json={
+                        "name": label_name,
+                        "color": "0e8a16",  # Green color
+                        "description": "Ready for autonomous developer loop execution",
+                    },
+                )
+                res.raise_for_status()
+            else:
+                label_response.raise_for_status()
+        except Exception as e:
+            logger.warning(
+                f"Error checking/creating label '{label_name}': {e}. Continuing without creating it."
             )
 
-        # 4. Publish the issue
+        # 3. Publish the issue
         logger.info(f"Creating GitHub issue: '{title}'...")
-        issue = repo.create_issue(
-            title=title,
-            body=body,
-            labels=[label],
+        create_issue_url = f"https://api.github.com/repos/{repo_name}/issues"
+        issue_res = session.post(
+            create_issue_url,
+            json={
+                "title": title,
+                "body": body,
+                "labels": [label_name],
+            },
         )
-        logger.info(f"Successfully published issue #{issue.number} at {issue.html_url}")
+        issue_res.raise_for_status()
+        issue_data = issue_res.json()
+        logger.info(
+            f"Successfully published issue #{issue_data.get('number')} at {issue_data.get('html_url')}"
+        )
 
         # Artificial jitter (1.0 to 2.0 seconds) to avoid secondary rate limits
         jitter = 1.0 + random.random()
         logger.debug(f"Applying artificial jitter of {jitter:.2f} seconds...")
         time.sleep(jitter)
 
-        # 5. Validate and remove local draft file to prevent Path Traversal
+        # 4. Validate and remove local draft file to prevent Path Traversal
         if filepath:
             draft_path = Path(filepath).resolve()
             try:

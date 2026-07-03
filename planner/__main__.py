@@ -85,11 +85,13 @@ def main():
 
                 # 4. Invoke graph
                 if draft_files:
-                    g = config.get_github_client()
+                    session = config.get_github_session()
 
                     print("Checking GitHub API rate limit quota...")
-                    rate_limit = g.get_rate_limit()
-                    remaining = rate_limit.core.remaining
+                    response = session.get("https://api.github.com/rate_limit")
+                    response.raise_for_status()
+
+                    remaining = response.json()["resources"]["core"]["remaining"]
                     required = max(50, len(draft_files) * 3)
                     print(
                         f"GitHub API quota remaining: {remaining} (required: {required})"

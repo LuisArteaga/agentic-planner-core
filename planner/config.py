@@ -3,7 +3,9 @@ import pathlib
 from typing import List
 import yaml
 from pydantic import BaseModel, Field, model_validator
-from github import Github, Auth, GithubRetry
+import requests
+from urllib3.util import Retry
+from requests.adapters import HTTPAdapter
 
 
 def load_env_file(filepath: str = ".env") -> None:
@@ -93,13 +95,20 @@ class AppConfig:
         except Exception as e:
             raise ValueError(f"Configuration validation failed: {e}")
 
-    def get_github_client(self) -> Github:
-        """Returns an authenticated GitHub client with a robust retry strategy."""
-        auth = Auth.Token(self.gh_pat)
-        retry_strategy = GithubRetry(
-            total=5,
-            status_forcelist=[403, 500, 502, 503, 504],
-            backoff_factor=1.0,
-            secondary_rate_wait=10.0,
+    def get_github_session(self) -> requests.Session:
+        """Returns a requests.Session configured with a robust retry strategy and auth headers."""
+        session = requests.Session()
+        session.headers.update(
+            {
+                "Authorization": f"Bearer {self.gh_pat}",
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28",
+            }
         )
-        return Github(auth=auth, retry=retry_strategy)
+        retries = Retry(
+            total=5,
+            backoff_factor=1,
+            status_forcelist=[403, 429, 500, 502, 503, 504],
+        )
+        session.mount("https://", HTTPAdapter(max_retries=retries))
+        return session

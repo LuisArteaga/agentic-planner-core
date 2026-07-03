@@ -32,27 +32,28 @@ class PublishNodeTests(unittest.TestCase):
         title, body = extract_title_and_body(
             content, "/path/to/0001-implement-feature.md"
         )
-        self.assertEqual(title, "Implement Feature")
+        self.assertEqual(title, "0001-implement-feature")
         self.assertEqual(body, content.strip())
 
-    @patch("planner.config.Github")
+    @patch("requests.Session")
     @patch("planner.nodes.publish_issue.time.sleep")
-    def test_publish_issue_node_success(self, mock_sleep, mock_github_class):
-        # Setup mocks for PyGithub
-        mock_github = MagicMock()
-        mock_github_class.return_value = mock_github
-        mock_repo = MagicMock()
-        mock_github.get_repo.return_value = mock_repo
+    def test_publish_issue_node_success(self, mock_sleep, mock_session_class):
+        mock_session = MagicMock()
+        mock_session_class.return_value = mock_session
 
-        # Mock label checking
-        mock_label = MagicMock()
-        mock_repo.get_label.return_value = mock_label
+        # Mock label response (label exists)
+        mock_label_response = MagicMock()
+        mock_label_response.status_code = 200
+        mock_session.get.return_value = mock_label_response
 
-        # Mock issue creation
-        mock_issue = MagicMock()
-        mock_issue.number = 42
-        mock_issue.html_url = "http://github.com/org/repo/issues/42"
-        mock_repo.create_issue.return_value = mock_issue
+        # Mock issue creation response
+        mock_issue_response = MagicMock()
+        mock_issue_response.status_code = 201
+        mock_issue_response.json.return_value = {
+            "number": 42,
+            "html_url": "http://github.com/org/repo/issues/42",
+        }
+        mock_session.post.return_value = mock_issue_response
 
         # Create a temp file to simulate the draft
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -81,29 +82,36 @@ class PublishNodeTests(unittest.TestCase):
             result = publish_issue_node(state)
 
             self.assertEqual(result["status"], "success")
-            mock_repo.create_issue.assert_called_once_with(
-                title="Test Issue",
-                body="This is content",
-                labels=[mock_label],
+            mock_session.post.assert_called_once_with(
+                "https://api.github.com/repos/org/repo/issues",
+                json={
+                    "title": "Test Issue",
+                    "body": "This is content",
+                    "labels": ["agent-ready"],
+                },
             )
             # Verify file was deleted
             self.assertFalse(draft_file.exists())
             mock_sleep.assert_called_once()
 
-    @patch("planner.config.Github")
-    def test_publish_issue_node_missing_label_created(self, mock_github_class):
-        mock_github = MagicMock()
-        mock_github_class.return_value = mock_github
-        mock_repo = MagicMock()
-        mock_github.get_repo.return_value = mock_repo
+    @patch("requests.Session")
+    def test_publish_issue_node_missing_label_created(self, mock_session_class):
+        mock_session = MagicMock()
+        mock_session_class.return_value = mock_session
 
-        # Simulating that get_label raises Exception
-        mock_repo.get_label.side_effect = Exception("Label not found")
-        mock_label = MagicMock()
-        mock_repo.create_label.return_value = mock_label
+        # Get label returns 404
+        mock_label_response = MagicMock()
+        mock_label_response.status_code = 404
+        mock_session.get.return_value = mock_label_response
 
-        mock_issue = MagicMock()
-        mock_repo.create_issue.return_value = mock_issue
+        # Post response
+        mock_post_response = MagicMock()
+        mock_post_response.status_code = 201
+        mock_post_response.json.return_value = {
+            "number": 42,
+            "html_url": "http://github.com/org/repo/issues/42",
+        }
+        mock_session.post.return_value = mock_post_response
 
         state: RefinementState = {
             "draft_issue_content": "Just body",
@@ -130,15 +138,22 @@ class PublishNodeTests(unittest.TestCase):
         ):
             publish_issue_node(state)
 
-        mock_repo.create_label.assert_called_once_with(
-            name="agent-ready",
-            color="0e8a16",
-            description="Ready for autonomous developer loop execution",
+        # Check label creation and issue creation calls
+        mock_session.post.assert_any_call(
+            "https://api.github.com/repos/org/repo/labels",
+            json={
+                "name": "agent-ready",
+                "color": "0e8a16",
+                "description": "Ready for autonomous developer loop execution",
+            },
         )
-        mock_repo.create_issue.assert_called_once_with(
-            title="Issue",
-            body="Just body",
-            labels=[mock_label],
+        mock_session.post.assert_any_call(
+            "https://api.github.com/repos/org/repo/issues",
+            json={
+                "title": "0002-issue",
+                "body": "Just body",
+                "labels": ["agent-ready"],
+            },
         )
 
     def test_publish_issue_node_missing_token_raises(self):
@@ -194,11 +209,11 @@ class MasterGraphErrorHandlingTests(unittest.TestCase):
 class MainRateLimitTests(unittest.TestCase):
     @patch("planner.__main__.graph")
     @patch("planner.__main__.AppConfig")
-    @patch("planner.config.Github")
+    @patch("requests.Session")
     @patch("planner.__main__.glob.glob")
     @patch("planner.__main__.Path")
     def test_main_insufficient_rate_limit_aborts(
-        self, mock_path, mock_glob, mock_github_class, mock_config_class, mock_graph
+        self, mock_path, mock_glob, mock_session_class, mock_config_class, mock_graph
     ):
         # Setup configs
         mock_config = MagicMock()
@@ -220,13 +235,14 @@ class MainRateLimitTests(unittest.TestCase):
         mock_path_instance.exists.return_value = True
         mock_path.return_value = mock_path_instance
 
-        # Mock Github
-        mock_github = MagicMock()
-        mock_github_class.return_value = mock_github
-        # Simulate remaining rate limit: 2 files * 3 = 6 needed, but we check max(50, 6) = 50. Let's return 45.
-        mock_rate_limit = MagicMock()
-        mock_rate_limit.core.remaining = 45
-        mock_github.get_rate_limit.return_value = mock_rate_limit
+        # Mock requests.Session rate limit call
+        mock_session = MagicMock()
+        mock_session_class.return_value = mock_session
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"resources": {"core": {"remaining": 45}}}
+        mock_session.get.return_value = mock_response
 
         from planner.__main__ import main
 
