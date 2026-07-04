@@ -14,10 +14,10 @@ The system operates in three distinct phases, all executed centrally from the `a
 Uses **LangChain deepagents** in Python with the `grill-with-docs` skill. The agent interviews the developer to create/refine `PRD.md`, `CONTEXT.md` (Domain Glossary), and initial `docs/adr/` (Architecture Decision Records) directly in the target repository.
 
 ### Phase 1b: Learning Verification
-Uses the `wise-teacher` skill to perform an interactive learning session with the developer to confirm deep understanding of the problem, design decisions, and wider context, saving a checklist log centrally to `drafts/<repo_name>/.teaching-checklist.md`.
+Uses the `wise-teacher` skill to perform an interactive learning session with the developer to confirm deep understanding of the problem, design decisions, and wider context, saving a checklist log centrally to `.planner/drafts/<repo_name>/.teaching-checklist.md`.
 
 ### Phase 2: Draft Issue Generation
-The `draft-issues` skill splits the `PRD.md` requirements into topologically sorted, tracer-bullet vertical slice files called **Draft Issues** (saved centrally under `drafts/<repo_name>/####-slug.md`).
+The `draft-issues` skill splits the `PRD.md` requirements into topologically sorted, tracer-bullet vertical slice files called **Draft Issues** (saved centrally under `.planner/drafts/<repo_name>/####-slug.md`).
 
 ### Phase 3: Autonomous Refinement & Publish
 A master LangGraph orchestrator iterates over all Draft Issues, executing isolated refinement subgraphs to perform targeted searches, grade technical solutions against ADRs, and publish them to GitHub as official `agent-ready` issues.
@@ -68,7 +68,7 @@ Decompose the requirements into topologically sorted draft issue files:
 ```bash
 python -m planner draft
 ```
-*(Generates issue files centrally under `drafts/<repo_name>/`)*.
+*(Generates issue files centrally under `.planner/drafts/<repo_name>/`)*.
 
 ### Phase 3: Autonomous Refinement & Publishing
 Before running refinement, configure your search sources:

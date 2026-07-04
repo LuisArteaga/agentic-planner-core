@@ -78,7 +78,7 @@ def save_draft_issue(filename: str, markdown_content: str) -> str:
     repo_name = get_repo_name(config)
 
     planner_core_root = Path(__file__).resolve().parents[1]
-    drafts_base = (planner_core_root / "drafts" / repo_name).resolve()
+    drafts_base = (planner_core_root / ".planner" / "drafts" / repo_name).resolve()
     drafts_base.mkdir(parents=True, exist_ok=True)
 
     # Path traversal protection
@@ -91,9 +91,58 @@ def save_draft_issue(filename: str, markdown_content: str) -> str:
     try:
         with open(target_file, "w", encoding="utf-8") as f:
             f.write(markdown_content)
-        return f"Successfully saved draft issue to central drafts: drafts/{repo_name}/{filename}"
+        return f"Successfully saved draft issue to central drafts: .planner/drafts/{repo_name}/{filename}"
     except Exception as e:
         return f"Failed to save draft issue: {e}"
+
+
+@tool
+def ask_question(
+    question: str, options: list[str], is_multi_select: bool = False
+) -> str:
+    """Ask the user a multiple-choice question or get a write-in response.
+
+    This tool prompts the developer in the console to select one of the options.
+    """
+    print(f"\n[Question]: {question}")
+    for i, opt in enumerate(options):
+        print(f"  {i + 1}. {opt}")
+    print("  0. Write custom response")
+
+    while True:
+        try:
+            ans = input("Your choice (number): ").strip()
+            if not ans:
+                continue
+            idx = int(ans)
+            if idx == 0:
+                return input("Your custom response: ")
+            if 1 <= idx <= len(options):
+                return options[idx - 1]
+        except ValueError:
+            print("Invalid input. Please enter a valid number.")
+
+
+@tool
+def save_teaching_checklist(markdown_content: str) -> str:
+    """Save the updated .teaching-checklist.md log centrally.
+
+    Use this to persist the wise-teacher checklist.
+    """
+    config = AppConfig()
+    repo_name = get_repo_name(config)
+    planner_core_root = Path(__file__).resolve().parents[1]
+    checklist_file = (
+        planner_core_root / ".planner" / "drafts" / repo_name / ".teaching-checklist.md"
+    ).resolve()
+    checklist_file.parent.mkdir(parents=True, exist_ok=True)
+
+    try:
+        with open(checklist_file, "w", encoding="utf-8") as f:
+            f.write(markdown_content)
+        return "Successfully saved teaching checklist."
+    except Exception as e:
+        return f"Error saving checklist: {e}"
 
 
 def get_llm(config: AppConfig) -> ChatOpenAI:
@@ -210,7 +259,9 @@ def run_verify(config: AppConfig):
             initial_user_message += f"\n\nCONTEXT.md glossary content:\n{f.read()}"
 
     agent = create_deep_agent(
-        model=llm, tools=[read_target_file], system_prompt=teacher_prompt
+        model=llm,
+        tools=[read_target_file, ask_question, save_teaching_checklist],
+        system_prompt=teacher_prompt,
     )
 
     # Run interactive console chat loop

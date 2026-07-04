@@ -85,7 +85,7 @@ def main():
 
                 # 1. Resolve drafts directory path centrally within the planner core repository
                 planner_core_root = Path(__file__).resolve().parents[1]
-                drafts_base = planner_core_root / "drafts"
+                drafts_base = planner_core_root / ".planner" / "drafts"
                 repo_full_path = drafts_base / config.github_repository
                 repo_short_path = drafts_base / Path(config.github_repository).name
 
