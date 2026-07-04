@@ -24,7 +24,7 @@ def get_target_path(config: AppConfig, relative_path: str) -> Path:
     workspace_root = Path(config.github_workspace).resolve()
     target_file = (workspace_root / relative_path).resolve()
 
-    # Containment check to prevent path traversal (ADR-0004 compliance)
+    # Containment check to prevent path traversal
     try:
         target_file.relative_to(workspace_root)
     except ValueError:
