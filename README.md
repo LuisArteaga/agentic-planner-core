@@ -13,6 +13,9 @@ The system operates in three distinct phases:
 ### Phase 1: Interactive Design
 Uses **LangChain deepagents** in Python with the `grill-with-docs` skill. The agent interviews the developer to create/refine `PRD.md`, `CONTEXT.md` (Domain Glossary), and initial `docs/adr/` (Architecture Decision Records) directly in the target repository.
 
+### Phase 1b: Learning Verification
+Uses the `wise-teacher` skill to perform an interactive learning session with the developer to confirm deep understanding of the problem, design decisions, and wider context, saving a checklist log to `.teaching-checklist.md`.
+
 ### Phase 2: Draft Issue Generation
 The `draft-issues` skill splits the `PRD.md` requirements into topologically sorted, tracer-bullet vertical slice files called **Draft Issues** (saved under `.planner/drafts/<repo_name>/####-slug.md`).
 

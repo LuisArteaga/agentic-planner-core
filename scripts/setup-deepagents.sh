@@ -189,13 +189,13 @@ if command -v uv &> /dev/null; then
     echo "Found 'uv' package manager. Using 'uv' for virtualenv setup..."
     uv venv "$VENV_DIR" --python 3.12
     source "$VENV_DIR/bin/activate"
-    uv pip install langchain langchain-openai langchain-core pydantic pyyaml
+    uv pip install langchain-openai langchain-core
 else
     echo "'uv' not found. Using standard 'python3 -m venv'..."
     python3 -m venv "$VENV_DIR"
     source "$VENV_DIR/bin/activate"
     pip install --upgrade pip
-    pip install langchain langchain-openai langchain-core pydantic pyyaml
+    pip install langchain-openai langchain-core
 fi
 
 echo "Virtual environment ready and packages installed successfully."

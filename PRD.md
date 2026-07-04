@@ -24,6 +24,10 @@ By separating this planning phase from code execution:
 * **PRD Template**: The planner repository provides a standard PRD template that the human and deepagent populate during their design session.
 * **Outputs**: `PRD.md`, `CONTEXT.md` (Domain Glossary), and initial ADRs (written directly into the target project's `GITHUB_WORKSPACE`).
 
+### Phase 1b: Learning Verification
+* **Wise Teacher Integration**: Uses the `wise-teacher` skill to perform an interactive learning session with the developer to confirm deep understanding of the problem, design decisions, and wider context.
+* **Checklist Log**: Tracks and records the developer's mastery in a local `.teaching-checklist.md` file before proceeding to the issue splitting phase.
+
 ### Phase 2: Draft Issue Generation
 * **Skill-Driven**: Executed via the deepagent runner using the `draft-issues` skill.
 * **Granular Decomposition**: Splitting follows **tracer-bullet vertical slices** (narrow, end-to-end verifiable paths) and resolves dependencies.

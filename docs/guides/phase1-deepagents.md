@@ -25,7 +25,7 @@ To configure a new or existing target repository to work with `deepagents` and t
 2. Configures `.gitignore` in the target repository to exclude the `.planner/` folder, `.env`, and `.venv`.
 3. Copies the `draft-issues`, `grill-with-docs`, and `wise-teacher` skills into `.planner/skills/` inside the target repository.
 4. Generates a template python runner script at `.planner/run_planner.py`.
-5. Creates a local Python virtual environment (`.venv`) and installs `deepagents` and `langchain-openai`.
+5. Creates a local Python virtual environment (`.venv`) and installs `langchain-openai` and `langchain-core`.
 
 ---
 
@@ -87,6 +87,28 @@ model_with_tools = llm.bind_tools([edit_file])
 response = model_with_tools.invoke([
     SystemMessage(content=grill_prompt),
     HumanMessage(content="Let's start the design session.")
+])
+```
+
+---
+
+## Using the `wise-teacher` Skill (Learning Verification)
+
+After aligning on the requirements via `grill-with-docs`, you can run the `wise-teacher` skill as a learning verification phase (Phase 1b). The agent will review the changes in `CONTEXT.md` and `PRD.md` with the developer, run interactive quizzes (using `ask_question`), and populate a local `.teaching-checklist.md` log file to verify that the developer has a thorough understanding of the architecture decisions before proceeding to issue splitting.
+
+To use the wise-teacher skill, load it in the runner:
+
+```python
+# Load the wise-teacher skill
+teacher_skill_path = os.path.join(os.path.dirname(__file__), "skills", "wise-teacher", "SKILL.md")
+with open(teacher_skill_path, "r", encoding="utf-8") as f:
+    teacher_prompt = f.read()
+
+# Initialize planning model with the wise-teacher system prompt and interactive tools
+model_with_tools = llm.bind_tools([ask_question])
+response = model_with_tools.invoke([
+    SystemMessage(content=teacher_prompt),
+    HumanMessage(content="Please start the review session and verify my understanding.")
 ])
 ```
 
