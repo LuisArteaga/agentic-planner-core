@@ -1,11 +1,11 @@
-# 0001 - Drei separate Graphen statt eines monolithischen LangGraph
+# 0001 - Separate Phasen statt eines monolithischen LangGraph
 
 * **Status**: Accepted
 * **Datum**: 2026-06-28
 * **Entscheidungsträger**: Luis Arteaga
 
 ## Kontext und Problemstellung
-Der Agentic Planner umfasst drei grundlegend verschiedene Aktivitäten: (1) interaktive PRD-Erstellung mit HITL, (2) Issue-Generierung aus Dokumenten, (3) iteratives Refinement mit Websuche und ADR-Abgleich. Ein einzelner LangGraph müsste den Zustand aller drei Phasen gleichzeitig verwalten, was zu State-Pollution führt und das Kontextfenster des LLM überlastet — ein Problem, das bereits beim Skill `grill-with-docs-and-websearch` beobachtet wurde, wo Websuchergebnisse den Kontext verdrängen und ADRs nie erstellt werden. Diese Entscheidung ist schwer umkehrbar, da die State-Schemata, Checkpointer und CLI-Schnittstellen jeder Phase grundlegend anders verdrahtet sind.
+Der Agentic Planner umfasst vier grundlegend verschiedene Aktivitäten: (1) interaktive PRD-Erstellung (grill), (1b) Lernprüfung (verify), (2) Issue-Generierung (draft), (3) iteratives Refinement (refine). Ein monolithischer Agenten-Steuerungsloop müsste den Zustand aller Phasen gleichzeitig verwalten, was zu State-Pollution führt und das Kontextfenster überlastet. Diese Entscheidung ist schwer umkehrbar, da die CLI-Schnittstellen und Ausführungsmodelle jeder Phase grundlegend anders verdrahtet sind.
 
 ## Entscheidungsfaktoren (Drivers)
 * Kontextverlust bei langem, gemischtem State (beobachtes Problem in grill-with-docs-and-websearch)
@@ -15,10 +15,13 @@ Der Agentic Planner umfasst drei grundlegend verschiedene Aktivitäten: (1) inte
 
 ## Betrachtete Optionen
 * **Option 1**: Ein monolithischer LangGraph mit interrupt()-Breakpoints zwischen den Phasen
-* **Option 2**: Drei separate, kompilierte LangGraphen mit je eigenem Entrypoint und State-Schema, die über Dateien im Dateisystem kommunizieren (PRD.md, CONTEXT.md, ADRs im Ziel-Repository; Draft Issues und Lernprüfungs-Logs zentralisiert im `.planner/drafts/` Verzeichnis des Planner-Cores)
+* **Option 2**: Separate Phasen mit je eigenem Entrypoint, die über Dateien im Dateisystem kommunizieren (PRD.md, CONTEXT.md, ADRs im Ziel-Repository; Draft Issues und Lernprüfungs-Logs zentralisiert im `.planner/drafts/` Verzeichnis des Planner-Cores)
 
 ## Entscheidung
-Option 2 — drei separate Graphen mit drei CLI-Entrypoints (z. B. `python -m planner prd`, `python -m planner split`, `python -m planner refine`). Die Kommunikation zwischen den Phasen erfolgt über Dateien im Ziel-Repository (PRD, Glossary, ADRs) sowie im zentralisierten `.planner/drafts/` Verzeichnis des Planner-Cores (Draft Issues und Lernprüfungs-Logs). Jede Phase hat ein eigenes State-Schema, einen eigenen Checkpointer und eigene Langfuse-Traces.
+Option 2 — vier separate Phasen mit vier CLI-Entrypoints (`grill`, `verify`, `draft`, `refine`). 
+- Die interaktiven Planungsphasen 1, 1b und 2 (`python -m planner grill`, `python -m planner verify`, `python -m planner draft`) werden als eigenständige LangChain `deepagents`-Sessions im Planner-Core ausgeführt.
+- Die autonome Verfeinerungsphase 3 (`python -m planner refine`) wird über einen kompilierten LangGraph-Orchestrator ausgeführt.
+Die Kommunikation erfolgt entkoppelt über Dateien (PRD, Glossary, ADRs im Ziel-Repository; Draft Issues und Checklist-Logs unter `.planner/drafts/` im Planner-Core). Jede Phase hat isolierte Ausführungspfade und Traces.
 
 ### Konsequenzen
 * **Positiv**: Jede Phase sieht nur ihren eigenen Zustand — kein Context Rot. Phasen können unabhängig optimiert, getestet und getracet werden. Ein Neustart einer Phase erfordert keinen Reset der anderen. Ziel-Repositories bleiben von Konfigurations- und Planungsdateien vollständig befreit.
