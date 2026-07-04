@@ -73,12 +73,14 @@ def main():
                 # 1. Resolve drafts directory path centrally within the planner core repository
                 planner_core_root = Path(__file__).resolve().parents[1]
                 drafts_base = planner_core_root / ".planner" / "drafts"
-                repo_full_path = drafts_base / config.github_repository
-                repo_short_path = drafts_base / Path(config.github_repository).name
 
-                drafts_dir = (
-                    repo_full_path if repo_full_path.exists() else repo_short_path
-                )
+                repo_name = config.github_repository
+                if repo_name and "/" in repo_name:
+                    repo_name = repo_name.split("/")[-1]
+                if not repo_name:
+                    repo_name = Path(config.github_workspace).name
+
+                drafts_dir = drafts_base / repo_name
 
                 # Check for files
                 draft_files = []
