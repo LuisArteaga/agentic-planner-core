@@ -164,7 +164,7 @@ def ask_question(
 def get_llm(config: AppConfig) -> ChatOpenAI:
     """Instantiate ChatOpenAI configured for OpenRouter compatibility."""
     return ChatOpenAI(
-        model=os.getenv("AGENT_MODEL", "google/gemini-2.5-flash"),
+        model=os.getenv("AGENT_MODEL", "moonshotai/kimi-k2.7-code"),
         temperature=0.0,
         openai_api_base="https://openrouter.ai/api/v1",
         openai_api_key=config.openrouter_api_key,
@@ -196,8 +196,14 @@ def run_interactive_console_loop(agent, agent_name: str, initial_message: str):
     while True:
         try:
             result = agent.invoke({"messages": messages})
-            print(f"\n[{agent_name}]: {result.content}\n")
-            messages.append(result)
+            if isinstance(result, dict) and "messages" in result:
+                response_message = result["messages"][-1]
+                messages = list(result["messages"])
+            else:
+                response_message = result
+                messages.append(response_message)
+
+            print(f"\n[{agent_name}]: {response_message.content}\n")
 
             user_input = input("[You]: ")
             if user_input.strip().lower() in ["exit", "quit"]:
