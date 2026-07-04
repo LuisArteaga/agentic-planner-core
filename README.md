@@ -32,18 +32,31 @@ A master LangGraph orchestrator iterates over all Draft Issues, executing isolat
 * An OpenRouter API Key (for LLM orchestration) and a GitHub Personal Access Token (for publishing).
 
 ### 2. Install Dependencies
-Run from the `agentic-planner-core` root directory:
+Activate your virtual environment and run the installation from the `agentic-planner-core` root directory:
 ```bash
+source .venv/bin/activate
 uv pip install -e ".[dev]"
 ```
 
 ### 3. Environment Variables
-Export these environment variables to configure the target repository:
+Copy the `.env.example` file to `.env` and populate the required keys:
+```bash
+cp .env.example .env
+```
+Variables inside `.env`:
+* `OPENROUTER_API_KEY`: Your OpenRouter API Key
+* `GH_PAT`: Your GitHub Personal Access Token
+* `GITHUB_REPOSITORY`: The target repository in the format `owner/repo`
+* `GITHUB_WORKSPACE`: The absolute path to the target repository on your system
+* `AGENT_MODEL`: (Optional) The model to use (e.g., `z-ai/glm-5.2`, defaults to `moonshotai/kimi-k2.7-code`)
+
+Alternatively, you can export these environment variables directly in your shell:
 ```bash
 export OPENROUTER_API_KEY="your-openrouter-key"
 export GH_PAT="your-github-token"
 export GITHUB_REPOSITORY="owner/target-repo"
 export GITHUB_WORKSPACE="/absolute/path/to/target-repo"
+export AGENT_MODEL="z-ai/glm-5.2"
 ```
 
 ---
