@@ -28,9 +28,37 @@ def main():
         help="Path to sources.yaml configuration",
     )
 
+    # grill command
+    subparsers.add_parser(
+        "grill",
+        help="Start the interactive PRD/ADR design session (grill-with-docs).",
+    )
+
+    # verify command
+    subparsers.add_parser(
+        "verify",
+        help="Start the interactive learning verification session (wise-teacher).",
+    )
+
+    # draft command
+    subparsers.add_parser(
+        "draft",
+        help="Generate draft issues from PRD centrally (draft-issues).",
+    )
+
     args = parser.parse_args()
 
-    if args.command == "refine":
+    if args.command in ["grill", "verify", "draft"]:
+        from planner.cli_planning import run_grill, run_verify, run_draft
+
+        config = AppConfig()
+        if args.command == "grill":
+            run_grill(config)
+        elif args.command == "verify":
+            run_verify(config)
+        elif args.command == "draft":
+            run_draft(config)
+    elif args.command == "refine":
         init_telemetry()
         start_orchestrator_loop()
         exit_code = 0
@@ -42,14 +70,17 @@ def main():
                 print(f"Target Repository: {config.github_repository}")
                 print(f"Strict Mode: {config.sources.strict}")
 
-                # 1. Resolve drafts directory path
-                drafts_base = Path(config.github_workspace) / ".planner" / "drafts"
-                repo_full_path = drafts_base / config.github_repository
-                repo_short_path = drafts_base / Path(config.github_repository).name
+                # 1. Resolve drafts directory path centrally within the planner core repository
+                planner_core_root = Path(__file__).resolve().parents[1]
+                drafts_base = planner_core_root / ".planner" / "drafts"
 
-                drafts_dir = (
-                    repo_full_path if repo_full_path.exists() else repo_short_path
-                )
+                repo_name = config.github_repository
+                if repo_name and "/" in repo_name:
+                    repo_name = repo_name.split("/")[-1]
+                if not repo_name:
+                    repo_name = Path(config.github_workspace).name
+
+                drafts_dir = drafts_base / repo_name
 
                 # Check for files
                 draft_files = []
