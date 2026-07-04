@@ -218,7 +218,7 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-# Agentic Planner temporary files
+# Agentic Planner temporary files (including local and centralized .planner/ drafts)
 .planner/
 .agent_logs/
 
