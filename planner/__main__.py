@@ -29,34 +29,21 @@ def main():
     )
 
     # grill command
-    grill_parser = subparsers.add_parser(
-        "grill", help="Start the interactive PRD/ADR design session (grill-with-docs)."
-    )
-    grill_parser.add_argument(
-        "--config",
-        default="config/sources.yaml",
-        help="Path to sources.yaml configuration",
+    subparsers.add_parser(
+        "grill",
+        help="Start the interactive PRD/ADR design session (grill-with-docs).",
     )
 
     # verify command
-    verify_parser = subparsers.add_parser(
+    subparsers.add_parser(
         "verify",
         help="Start the interactive learning verification session (wise-teacher).",
     )
-    verify_parser.add_argument(
-        "--config",
-        default="config/sources.yaml",
-        help="Path to sources.yaml configuration",
-    )
 
     # draft command
-    draft_parser = subparsers.add_parser(
-        "draft", help="Generate draft issues from PRD centrally (draft-issues)."
-    )
-    draft_parser.add_argument(
-        "--config",
-        default="config/sources.yaml",
-        help="Path to sources.yaml configuration",
+    subparsers.add_parser(
+        "draft",
+        help="Generate draft issues from PRD centrally (draft-issues).",
     )
 
     args = parser.parse_args()
@@ -64,7 +51,7 @@ def main():
     if args.command in ["grill", "verify", "draft"]:
         from planner.cli_planning import run_grill, run_verify, run_draft
 
-        config = AppConfig(sources_yaml_path=args.config)
+        config = AppConfig()
         if args.command == "grill":
             run_grill(config)
         elif args.command == "verify":

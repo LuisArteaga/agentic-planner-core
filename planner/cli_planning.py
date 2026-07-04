@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 from pathlib import Path
 from langchain_openai import ChatOpenAI
@@ -8,8 +9,8 @@ from deepagents import create_deep_agent
 from planner.config import AppConfig
 
 
-# Helper to get the target repo short name
 def get_repo_name(config: AppConfig) -> str:
+    """Helper to extract the short repository name."""
     repo_name = config.github_repository
     if repo_name and "/" in repo_name:
         repo_name = repo_name.split("/")[-1]
@@ -23,7 +24,7 @@ def get_target_path(config: AppConfig, relative_path: str) -> Path:
     workspace_root = Path(config.github_workspace).resolve()
     target_file = (workspace_root / relative_path).resolve()
 
-    # Containment check to prevent path traversal
+    # Containment check to prevent path traversal (ADR-0004 compliance)
     try:
         target_file.relative_to(workspace_root)
     except ValueError:
@@ -33,67 +34,103 @@ def get_target_path(config: AppConfig, relative_path: str) -> Path:
     return target_file
 
 
-@tool
-def read_target_file(path: str) -> str:
-    """Read the content of a file in the target repository.
+def create_target_file_tools(config: AppConfig):
+    """Tool factory to build file access tools bound to a specific AppConfig instance."""
 
-    The path must be relative to the target repository root (e.g. 'PRD.md', 'CONTEXT.md', 'docs/adr/0001-setup.md').
-    """
-    config = AppConfig()
-    try:
-        target_file = get_target_path(config, path)
-        if not target_file.exists():
-            return f"Error: File '{path}' does not exist."
-        with open(target_file, "r", encoding="utf-8") as f:
-            return f.read()
-    except Exception as e:
-        return f"Error reading file '{path}': {e}"
+    @tool
+    def read_target_file(path: str) -> str:
+        """Read the content of a file in the target repository.
+
+        The path must be relative to the target repository root (e.g. 'PRD.md', 'CONTEXT.md', 'docs/adr/0001-setup.md').
+        """
+        try:
+            target_file = get_target_path(config, path)
+            if not target_file.exists():
+                return f"Error: File '{path}' does not exist."
+            with open(target_file, "r", encoding="utf-8") as f:
+                return f.read()
+        except Exception as e:
+            return f"Error reading file '{path}': {e}"
+
+    @tool
+    def write_target_file(path: str, content: str) -> str:
+        """Write or overwrite the content of a file in the target repository.
+
+        The path must be relative to the target repository root (e.g. 'PRD.md', 'CONTEXT.md', 'docs/adr/0001-setup.md').
+        Directories will be created if they do not exist.
+        """
+        try:
+            target_file = get_target_path(config, path)
+            target_file.parent.mkdir(parents=True, exist_ok=True)
+            with open(target_file, "w", encoding="utf-8") as f:
+                f.write(content)
+            return f"Successfully wrote file '{path}'."
+        except Exception as e:
+            return f"Error writing file '{path}': {e}"
+
+    return read_target_file, write_target_file
 
 
-@tool
-def write_target_file(path: str, content: str) -> str:
-    """Write or overwrite the content of a file in the target repository.
+def create_planning_tools(config: AppConfig):
+    """Tool factory to build planning and logging tools bound to a specific AppConfig instance."""
 
-    The path must be relative to the target repository root (e.g. 'PRD.md', 'CONTEXT.md', 'docs/adr/0001-setup.md').
-    Directories will be created if they do not exist.
-    """
-    config = AppConfig()
-    try:
-        target_file = get_target_path(config, path)
-        target_file.parent.mkdir(parents=True, exist_ok=True)
-        with open(target_file, "w", encoding="utf-8") as f:
-            f.write(content)
-        return f"Successfully wrote file '{path}'."
-    except Exception as e:
-        return f"Error writing file '{path}': {e}"
+    @tool
+    def save_draft_issue(filename: str, markdown_content: str) -> str:
+        """Save a generated draft issue markdown file in the central planner core repository.
 
+        The filename must strictly follow the format '####-slug.md' (e.g., '0001-setup-db.md') topologically sorted.
+        """
+        # Enforce filename format described in skills/draft-issues/SKILL.md
+        if not re.match(r"^\d{4}-[\w-]+\.md$", filename):
+            return (
+                "Error: Filename must strictly follow the format '####-slug.md' "
+                "(e.g., '0001-setup-db.md') topologically sorted."
+            )
 
-@tool
-def save_draft_issue(filename: str, markdown_content: str) -> str:
-    """Save a generated draft issue markdown file in the central planner core repository.
+        repo_name = get_repo_name(config)
+        planner_core_root = Path(__file__).resolve().parents[1]
+        drafts_base = (planner_core_root / ".planner" / "drafts" / repo_name).resolve()
+        drafts_base.mkdir(parents=True, exist_ok=True)
 
-    The filename must follow the format '####-slug.md' (e.g., '0001-setup-db.md') topologically sorted.
-    """
-    config = AppConfig()
-    repo_name = get_repo_name(config)
+        # Path traversal protection
+        target_file = (drafts_base / filename).resolve()
+        try:
+            target_file.relative_to(drafts_base)
+        except ValueError:
+            return "Error: File path traversal detected. Access denied to write outside drafts directory."
 
-    planner_core_root = Path(__file__).resolve().parents[1]
-    drafts_base = (planner_core_root / ".planner" / "drafts" / repo_name).resolve()
-    drafts_base.mkdir(parents=True, exist_ok=True)
+        try:
+            with open(target_file, "w", encoding="utf-8") as f:
+                f.write(markdown_content)
+            return f"Successfully saved draft issue to central drafts: .planner/drafts/{repo_name}/{filename}"
+        except Exception as e:
+            return f"Failed to save draft issue: {e}"
 
-    # Path traversal protection
-    target_file = (drafts_base / filename).resolve()
-    try:
-        target_file.relative_to(drafts_base)
-    except ValueError:
-        return "Error: File path traversal detected. Access denied to write outside drafts directory."
+    @tool
+    def save_teaching_checklist(markdown_content: str) -> str:
+        """Save the updated .teaching-checklist.md log centrally in the planner core.
 
-    try:
-        with open(target_file, "w", encoding="utf-8") as f:
-            f.write(markdown_content)
-        return f"Successfully saved draft issue to central drafts: .planner/drafts/{repo_name}/{filename}"
-    except Exception as e:
-        return f"Failed to save draft issue: {e}"
+        Use this to persist the wise-teacher checklist.
+        """
+        repo_name = get_repo_name(config)
+        planner_core_root = Path(__file__).resolve().parents[1]
+        checklist_file = (
+            planner_core_root
+            / ".planner"
+            / "drafts"
+            / repo_name
+            / ".teaching-checklist.md"
+        ).resolve()
+        checklist_file.parent.mkdir(parents=True, exist_ok=True)
+
+        try:
+            with open(checklist_file, "w", encoding="utf-8") as f:
+                f.write(markdown_content)
+            return "Successfully saved teaching checklist."
+        except Exception as e:
+            return f"Error saving checklist: {e}"
+
+    return save_draft_issue, save_teaching_checklist
 
 
 @tool
@@ -104,6 +141,7 @@ def ask_question(
 
     This tool prompts the developer in the console to select one of the options.
     """
+    # Console prompt logic for interactive chat
     print(f"\n[Question]: {question}")
     for i, opt in enumerate(options):
         print(f"  {i + 1}. {opt}")
@@ -123,29 +161,8 @@ def ask_question(
             print("Invalid input. Please enter a valid number.")
 
 
-@tool
-def save_teaching_checklist(markdown_content: str) -> str:
-    """Save the updated .teaching-checklist.md log centrally.
-
-    Use this to persist the wise-teacher checklist.
-    """
-    config = AppConfig()
-    repo_name = get_repo_name(config)
-    planner_core_root = Path(__file__).resolve().parents[1]
-    checklist_file = (
-        planner_core_root / ".planner" / "drafts" / repo_name / ".teaching-checklist.md"
-    ).resolve()
-    checklist_file.parent.mkdir(parents=True, exist_ok=True)
-
-    try:
-        with open(checklist_file, "w", encoding="utf-8") as f:
-            f.write(markdown_content)
-        return "Successfully saved teaching checklist."
-    except Exception as e:
-        return f"Error saving checklist: {e}"
-
-
 def get_llm(config: AppConfig) -> ChatOpenAI:
+    """Instantiate ChatOpenAI configured for OpenRouter compatibility."""
     return ChatOpenAI(
         model=os.getenv("AGENT_MODEL", "google/gemini-2.5-flash"),
         temperature=0.0,
@@ -155,28 +172,58 @@ def get_llm(config: AppConfig) -> ChatOpenAI:
     )
 
 
+def setup_planning_agent(config: AppConfig, skill_name: str, tools: list):
+    """Factory to load skill prompts and construct the deep agent."""
+    llm = get_llm(config)
+
+    planner_core_root = Path(__file__).resolve().parents[1]
+    skill_path = planner_core_root / "skills" / skill_name / "SKILL.md"
+    if not skill_path.exists():
+        print(f"Error: Skill prompt not found at {skill_path}", file=sys.stderr)
+        sys.exit(1)
+
+    with open(skill_path, "r", encoding="utf-8") as f:
+        skill_prompt = f.read()
+
+    return create_deep_agent(model=llm, tools=tools, system_prompt=skill_prompt)
+
+
+def run_interactive_console_loop(agent, agent_name: str, initial_message: str):
+    """Generic interactive console chat loop for planning agents."""
+    messages = [HumanMessage(content=initial_message)]
+    print(f"\n[{agent_name}]: Initializing session... (Type 'exit' or 'quit' to end)\n")
+
+    while True:
+        try:
+            result = agent.invoke({"messages": messages})
+            print(f"\n[{agent_name}]: {result.content}\n")
+
+            user_input = input("[You]: ")
+            if user_input.strip().lower() in ["exit", "quit"]:
+                print(f"Ending {agent_name} session.")
+                break
+
+            messages.append(HumanMessage(content=user_input))
+        except KeyboardInterrupt:
+            print("\nSession interrupted.")
+            break
+        except Exception as e:
+            print(f"Error in agent execution loop: {e}", file=sys.stderr)
+            break
+
+
 def run_grill(config: AppConfig):
     """Runs the interactive PRD/ADR design session (grill-with-docs) from planner-core."""
     print("=== Starting Phase 1: Interactive Design Session (grill-with-docs) ===")
     print(f"Target workspace: {config.github_workspace}")
     print("Connecting to OpenRouter...")
 
-    llm = get_llm(config)
+    read_target_file, write_target_file = create_target_file_tools(config)
+    agent = setup_planning_agent(
+        config, "grill-with-docs", [read_target_file, write_target_file]
+    )
 
-    # Load skill
-    planner_core_root = Path(__file__).resolve().parents[1]
-    skill_path = planner_core_root / "skills" / "grill-with-docs" / "SKILL.md"
-    if not skill_path.exists():
-        print(
-            f"Error: grill-with-docs skill prompt not found at {skill_path}",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-    with open(skill_path, "r", encoding="utf-8") as f:
-        grill_prompt = f.read()
-
-    # Read initial PRD/CONTEXT files if they exist to bootstrap the context
+    # Read initial PRD/CONTEXT files if they exist to bootstrap context
     prd_path = Path(config.github_workspace) / "PRD.md"
     context_path = Path(config.github_workspace) / "CONTEXT.md"
 
@@ -190,37 +237,7 @@ def run_grill(config: AppConfig):
                 f"\n\nExisting CONTEXT.md glossary content:\n{f.read()}"
             )
 
-    agent = create_deep_agent(
-        model=llm,
-        tools=[read_target_file, write_target_file],
-        system_prompt=grill_prompt,
-    )
-
-    # Run interactive console chat loop
-    messages = [HumanMessage(content=initial_user_message)]
-    print(
-        "\n[Grill Agent]: Initializing the grilling session... (Type 'exit' or 'quit' to end the session)\n"
-    )
-
-    while True:
-        try:
-            result = agent.invoke({"messages": messages})
-            # Print the agent's response
-            print(f"\n[Grill Agent]: {result.content}\n")
-
-            # Read developer input
-            user_input = input("[You]: ")
-            if user_input.strip().lower() in ["exit", "quit"]:
-                print("Ending grilling session.")
-                break
-
-            messages.append(HumanMessage(content=user_input))
-        except KeyboardInterrupt:
-            print("\nSession interrupted.")
-            break
-        except Exception as e:
-            print(f"Error in grill loop: {e}", file=sys.stderr)
-            break
+    run_interactive_console_loop(agent, "Grill Agent", initial_user_message)
 
 
 def run_verify(config: AppConfig):
@@ -229,22 +246,16 @@ def run_verify(config: AppConfig):
     print(f"Target workspace: {config.github_workspace}")
     print("Connecting to OpenRouter...")
 
-    llm = get_llm(config)
+    read_target_file, _ = create_target_file_tools(config)
+    _, save_teaching_checklist = create_planning_tools(config)
 
-    # Load skill
-    planner_core_root = Path(__file__).resolve().parents[1]
-    skill_path = planner_core_root / "skills" / "wise-teacher" / "SKILL.md"
-    if not skill_path.exists():
-        print(
-            f"Error: wise-teacher skill prompt not found at {skill_path}",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+    agent = setup_planning_agent(
+        config,
+        "wise-teacher",
+        [read_target_file, ask_question, save_teaching_checklist],
+    )
 
-    with open(skill_path, "r", encoding="utf-8") as f:
-        teacher_prompt = f.read()
-
-    # Read PRD/CONTEXT files
+    # Read PRD/CONTEXT files to bootstrap wise-teacher
     prd_path = Path(config.github_workspace) / "PRD.md"
     context_path = Path(config.github_workspace) / "CONTEXT.md"
 
@@ -258,35 +269,7 @@ def run_verify(config: AppConfig):
         with open(context_path, "r", encoding="utf-8") as f:
             initial_user_message += f"\n\nCONTEXT.md glossary content:\n{f.read()}"
 
-    agent = create_deep_agent(
-        model=llm,
-        tools=[read_target_file, ask_question, save_teaching_checklist],
-        system_prompt=teacher_prompt,
-    )
-
-    # Run interactive console chat loop
-    messages = [HumanMessage(content=initial_user_message)]
-    print(
-        "\n[Wise Teacher]: Initializing review checklist... (Type 'exit' or 'quit' to end the session)\n"
-    )
-
-    while True:
-        try:
-            result = agent.invoke({"messages": messages})
-            print(f"\n[Wise Teacher]: {result.content}\n")
-
-            user_input = input("[You]: ")
-            if user_input.strip().lower() in ["exit", "quit"]:
-                print("Ending verification session.")
-                break
-
-            messages.append(HumanMessage(content=user_input))
-        except KeyboardInterrupt:
-            print("\nSession interrupted.")
-            break
-        except Exception as e:
-            print(f"Error in teacher loop: {e}", file=sys.stderr)
-            break
+    run_interactive_console_loop(agent, "Wise Teacher", initial_user_message)
 
 
 def run_draft(config: AppConfig):
@@ -295,22 +278,10 @@ def run_draft(config: AppConfig):
     print(f"Target workspace: {config.github_workspace}")
     print("Connecting to OpenRouter...")
 
-    llm = get_llm(config)
+    save_draft_issue, _ = create_planning_tools(config)
+    agent = setup_planning_agent(config, "draft-issues", [save_draft_issue])
 
-    # Load skill
-    planner_core_root = Path(__file__).resolve().parents[1]
-    skill_path = planner_core_root / "skills" / "draft-issues" / "SKILL.md"
-    if not skill_path.exists():
-        print(
-            f"Error: draft-issues skill prompt not found at {skill_path}",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-    with open(skill_path, "r", encoding="utf-8") as f:
-        draft_prompt = f.read()
-
-    # Read PRD/CONTEXT files
+    # Read target PRD/CONTEXT files
     prd_path = Path(config.github_workspace) / "PRD.md"
     context_path = Path(config.github_workspace) / "CONTEXT.md"
 
@@ -326,10 +297,6 @@ def run_draft(config: AppConfig):
         with open(context_path, "r", encoding="utf-8") as f:
             context_content = f.read()
 
-    agent = create_deep_agent(
-        model=llm, tools=[save_draft_issue], system_prompt=draft_prompt
-    )
-
     print("Generating and saving draft issues centrally...")
     try:
         agent.invoke(
@@ -342,7 +309,7 @@ def run_draft(config: AppConfig):
             }
         )
         print(
-            "Draft issues generation complete. Check the 'drafts/' directory in agentic-planner-core."
+            "Draft issues generation complete. Check '.planner/drafts/' centrally in planner-core."
         )
     except Exception as e:
         print(f"Error generating draft issues: {e}", file=sys.stderr)

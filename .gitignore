@@ -220,6 +220,7 @@ __marimo__/
 
 # Agentic Planner temporary files
 .planner/
+.planner/drafts/
 .agent_logs/
 
 
