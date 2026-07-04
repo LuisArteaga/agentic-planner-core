@@ -45,7 +45,7 @@ Every Draft Issue file MUST strictly follow this Markdown structure:
 # {type}: {Short Description}
 
 ## What to build
-{Concise, technical description of the vertical slice behavior, using the domain glossary terms from CONVENTIONS.md or CONTEXT.md}
+{Concise, technical description of the vertical slice behavior, using the domain glossary terms from CONTEXT.md}
 
 ## Scope
 {A single lowercase word identifying the subsystem, e.g., auth, api, ui, db, ci}

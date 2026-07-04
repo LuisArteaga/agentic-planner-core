@@ -43,7 +43,7 @@ Example initialization from `.planner/run_planner.py`:
 ```python
 import os
 from langchain_openai import ChatOpenAI
-from deepagents import create_deep_agent
+from langchain_core.messages import SystemMessage, HumanMessage
 
 # 1. Initialize the LLM with OpenRouter and Responses API disabled
 model_name = os.getenv("AGENT_MODEL", "google/gemini-2.5-flash")
@@ -60,12 +60,12 @@ skill_path = os.path.join(os.path.dirname(__file__), "skills", "draft-issues", "
 with open(skill_path, "r", encoding="utf-8") as f:
     draft_issues_prompt = f.read()
 
-# 3. Instantiate the planning agent
-agent = create_deep_agent(
-    model=llm,
-    system_prompt=draft_issues_prompt,
-    # Pass necessary tools such as write_file to allow saving draft issues
-)
+# 3. Bind tools and run the planning agent
+model_with_tools = llm.bind_tools([save_draft_issue])
+response = model_with_tools.invoke([
+    SystemMessage(content=draft_issues_prompt),
+    HumanMessage(content="Please split the PRD.")
+])
 ```
 
 ---
@@ -82,12 +82,12 @@ grill_skill_path = os.path.join(os.path.dirname(__file__), "skills", "grill-with
 with open(grill_skill_path, "r", encoding="utf-8") as f:
     grill_prompt = f.read()
 
-# Initialize deepagent with the grill system prompt
-agent = create_deep_agent(
-    model=llm,
-    system_prompt=grill_prompt,
-    # equipping with file editing tools allows it to update CONTEXT.md/ADRs inline
-)
+# Initialize planning model with the grill system prompt and file editing tools
+model_with_tools = llm.bind_tools([edit_file])
+response = model_with_tools.invoke([
+    SystemMessage(content=grill_prompt),
+    HumanMessage(content="Let's start the design session.")
+])
 ```
 
 ---
