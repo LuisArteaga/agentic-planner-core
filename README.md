@@ -8,65 +8,78 @@ By separating the planning and refinement phases, it prevents context rot and is
 
 ## Workflow Overview
 
-The system operates in three distinct phases:
+The system operates in three distinct phases, all executed centrally from the `agentic-planner-core` project:
 
 ### Phase 1: Interactive Design
 Uses **LangChain deepagents** in Python with the `grill-with-docs` skill. The agent interviews the developer to create/refine `PRD.md`, `CONTEXT.md` (Domain Glossary), and initial `docs/adr/` (Architecture Decision Records) directly in the target repository.
 
 ### Phase 1b: Learning Verification
-Uses the `wise-teacher` skill to perform an interactive learning session with the developer to confirm deep understanding of the problem, design decisions, and wider context, saving a checklist log to `.teaching-checklist.md`.
+Uses the `wise-teacher` skill to perform an interactive learning session with the developer to confirm deep understanding of the problem, design decisions, and wider context, saving a checklist log centrally to `drafts/<repo_name>/.teaching-checklist.md`.
 
 ### Phase 2: Draft Issue Generation
-The `draft-issues` skill splits the `PRD.md` requirements into topologically sorted, tracer-bullet vertical slice files called **Draft Issues** (saved under `.planner/drafts/<repo_name>/####-slug.md`).
+The `draft-issues` skill splits the `PRD.md` requirements into topologically sorted, tracer-bullet vertical slice files called **Draft Issues** (saved centrally under `drafts/<repo_name>/####-slug.md`).
 
 ### Phase 3: Autonomous Refinement & Publish
-Triggered via `python -m planner refine`. A master LangGraph orchestrator iterates over all Draft Issues, executing isolated refinement subgraphs to perform targeted searches, grade technical solutions against ADRs, and publish them to GitHub as official `agent-ready` issues.
+A master LangGraph orchestrator iterates over all Draft Issues, executing isolated refinement subgraphs to perform targeted searches, grade technical solutions against ADRs, and publish them to GitHub as official `agent-ready` issues.
 
 ---
 
-## Setup Guide
+## Setup & Configuration
 
 ### 1. Requirements
 * Python `>= 3.12` (locked via `.python-version`)
-* A target repository to plan.
+* A target repository to plan (where `PRD.md`, `CONTEXT.md`, and `docs/adr/` will live).
 * An OpenRouter API Key (for LLM orchestration) and a GitHub Personal Access Token (for publishing).
 
-### 2. Bootstrapping a Target Repository
-To prepare a target repository to work with the planner:
+### 2. Install Dependencies
+Run from the `agentic-planner-core` root directory:
 ```bash
-./scripts/setup-deepagents.sh /path/to/target-repository
+uv pip install -e ".[dev]"
 ```
-This script:
-- Creates the local `.planner/` structure and copies the prompt skills (`draft-issues`, `grill-with-docs`, `wise-teacher`).
-- Configures `.gitignore` to ignore local planner config and environments.
-- Generates a template python runner at `.planner/run_planner.py`.
-- Sets up a virtual environment (`.venv`) and installs LangChain/OpenRouter dependencies.
 
-### 3. Detailed Integration Guide
-For a full walkthrough of setting up and running Phase 1 and 2 with deepagents, see [docs/guides/phase1-deepagents.md](./docs/guides/phase1-deepagents.md).
+### 3. Environment Variables
+Export these environment variables to configure the target repository:
+```bash
+export OPENROUTER_API_KEY="your-openrouter-key"
+export GH_PAT="your-github-token"
+export GITHUB_REPOSITORY="owner/target-repo"
+export GITHUB_WORKSPACE="/absolute/path/to/target-repo"
+```
 
 ---
 
-## Autonomous Refinement (Phase 3)
+## Execution Guide
 
-Once Draft Issues are populated, run the refinement orchestrator from the `agentic-planner-core` directory:
+### Phase 1: Grilling Session
+Start the interactive interview to align requirements and generate/update PRD, Glossary, and ADRs in the target repo:
+```bash
+python -m planner grill
+```
+*(Grill agent will modify files directly in your target repository path specified by `GITHUB_WORKSPACE`)*.
 
-1. Copy the example source config:
-   ```bash
-   cp config/sources.example.yaml config/sources.yaml
-   ```
-2. Configure your allowed domains/repositories in `config/sources.yaml`.
-3. Set your environment variables:
-   ```bash
-   export OPENROUTER_API_KEY="your-key"
-   export GH_PAT="your-github-token"
-   export GITHUB_REPOSITORY="owner/target-repo"
-   export GITHUB_WORKSPACE="/path/to/target-repo"
-   ```
-4. Run the master loop:
-   ```bash
-   python -m planner refine
-   ```
+### Phase 1b: Learning Verification
+Verify understanding and log the checklist centrally:
+```bash
+python -m planner verify
+```
+
+### Phase 2: Draft Issue Generation
+Decompose the requirements into topologically sorted draft issue files:
+```bash
+python -m planner draft
+```
+*(Generates issue files centrally under `drafts/<repo_name>/`)*.
+
+### Phase 3: Autonomous Refinement & Publishing
+Before running refinement, configure your search sources:
+```bash
+cp config/sources.example.yaml config/sources.yaml
+```
+Define your allowed search domains/repositories in `config/sources.yaml`. Then run refinement:
+```bash
+python -m planner refine
+```
+*(Refines the issues, checks grades against ADRs, and publishes them as issues to GitHub)*.
 
 ---
 

@@ -26,12 +26,12 @@ By separating this planning phase from code execution:
 
 ### Phase 1b: Learning Verification
 * **Wise Teacher Integration**: Uses the `wise-teacher` skill to perform an interactive learning session with the developer to confirm deep understanding of the problem, design decisions, and wider context.
-* **Checklist Log**: Tracks and records the developer's mastery in a local `.teaching-checklist.md` file before proceeding to the issue splitting phase.
+* **Checklist Log**: Tracks and records the developer's mastery in a central `drafts/<repo_name>/.teaching-checklist.md` file before proceeding to the issue splitting phase.
 
 ### Phase 2: Draft Issue Generation
-* **Skill-Driven**: Executed via the deepagent runner using the `draft-issues` skill.
+* **Skill-Driven**: Executed via the planner core runner using the `draft-issues` skill.
 * **Granular Decomposition**: Splitting follows **tracer-bullet vertical slices** (narrow, end-to-end verifiable paths) and resolves dependencies.
-* **Output Location**: Writes draft issues to `.planner/drafts/<repo_name>/` (added to `.gitignore` of the target project) in Markdown format following the standard issue template.
+* **Output Location**: Writes draft issues centrally to `drafts/<repo_name>/` inside `agentic-planner-core` (which is gitignored in the planner core project) in Markdown format following the standard issue template.
 
 ### Phase 3: LangGraph Refinement & Publish
 * **Execution**: Triggered via `python -m planner refine`.
@@ -55,12 +55,11 @@ agentic-planner-core/
 │       ├── 0001-drei-separate-graphen.md
 │       └── 0002-strict-modus-quelleneinschraenkung.md
 ├── docs/guides/
-│   └── phase1-deepagents.md            # Setup guide for LangChain deepagents
+│   └── phase1-deepagents.md            # Guide for LangChain deepagents integration
 ├── scripts/
 │   ├── review.py                       # LLM PR Review Judge implementation
 │   ├── review.sh                       # Wrapper to run review.py with OTel tracing
 │   ├── secret_scan.py                  # Local and CI secret scanning utility
-│   ├── setup-deepagents.sh             # Target repository bootstrapping script
 │   └── telemetry.py                    # Custom OTel tracing module
 ├── config/
 │   ├── grading_rubric.md               # Critic grading criteria

@@ -28,9 +28,50 @@ def main():
         help="Path to sources.yaml configuration",
     )
 
+    # grill command
+    grill_parser = subparsers.add_parser(
+        "grill", help="Start the interactive PRD/ADR design session (grill-with-docs)."
+    )
+    grill_parser.add_argument(
+        "--config",
+        default="config/sources.yaml",
+        help="Path to sources.yaml configuration",
+    )
+
+    # verify command
+    verify_parser = subparsers.add_parser(
+        "verify",
+        help="Start the interactive learning verification session (wise-teacher).",
+    )
+    verify_parser.add_argument(
+        "--config",
+        default="config/sources.yaml",
+        help="Path to sources.yaml configuration",
+    )
+
+    # draft command
+    draft_parser = subparsers.add_parser(
+        "draft", help="Generate draft issues from PRD centrally (draft-issues)."
+    )
+    draft_parser.add_argument(
+        "--config",
+        default="config/sources.yaml",
+        help="Path to sources.yaml configuration",
+    )
+
     args = parser.parse_args()
 
-    if args.command == "refine":
+    if args.command in ["grill", "verify", "draft"]:
+        from planner.cli_planning import run_grill, run_verify, run_draft
+
+        config = AppConfig(sources_yaml_path=args.config)
+        if args.command == "grill":
+            run_grill(config)
+        elif args.command == "verify":
+            run_verify(config)
+        elif args.command == "draft":
+            run_draft(config)
+    elif args.command == "refine":
         init_telemetry()
         start_orchestrator_loop()
         exit_code = 0
@@ -42,8 +83,9 @@ def main():
                 print(f"Target Repository: {config.github_repository}")
                 print(f"Strict Mode: {config.sources.strict}")
 
-                # 1. Resolve drafts directory path
-                drafts_base = Path(config.github_workspace) / ".planner" / "drafts"
+                # 1. Resolve drafts directory path centrally within the planner core repository
+                planner_core_root = Path(__file__).resolve().parents[1]
+                drafts_base = planner_core_root / "drafts"
                 repo_full_path = drafts_base / config.github_repository
                 repo_short_path = drafts_base / Path(config.github_repository).name
 
