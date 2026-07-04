@@ -73,6 +73,7 @@ from pathlib import Path
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_core.tools import tool
+from deepagents import create_deep_agent
 
 # 1. Retrieve the target repository name for draft issue subdirectory
 # We fetch it from environment variable or fall back to directory name
@@ -126,10 +127,12 @@ def save_draft_issue(filename: str, markdown_content: str) -> str:
     drafts_base = Path(__file__).resolve().parent / "drafts" / repo_name
     drafts_base.mkdir(parents=True, exist_ok=True)
     
-    # Path traversal protection
+    # Path traversal protection (ADR-0004/0005 compliant containment check)
     target_file = (drafts_base / filename).resolve()
-    if not str(target_file).startswith(str(drafts_base.resolve())):
-        return f"Error: File path traversal detected. Access denied to write outside drafts directory."
+    try:
+        target_file.relative_to(drafts_base.resolve())
+    except ValueError:
+        return "Error: File path traversal detected. Access denied to write outside drafts directory."
         
     try:
         with open(target_file, "w", encoding="utf-8") as f:
@@ -150,29 +153,23 @@ llm = ChatOpenAI(
     use_responses_api=False  # CRITICAL: OpenRouter compatibility flag
 )
 
-# 7. Bind tools to the model
-tools = [save_draft_issue]
-model_with_tools = llm.bind_tools(tools)
+# 7. Create deepagents planner
+print("Initializing deepagents planner...")
+agent = create_deep_agent(
+    model=llm,
+    tools=[save_draft_issue],
+    system_prompt=draft_issues_prompt
+)
 
-# 8. Construct messages and invoke the planning agent
+# 8. Run the planning agent
 print("Running planning agent to split PRD into draft issues...")
-messages = [
-    SystemMessage(content=draft_issues_prompt),
-    HumanMessage(content=f"PRD Content:\n{prd_content}\n\nDomain Glossary (CONTEXT.md):\n{context_content}")
-]
-
 try:
-    response = model_with_tools.invoke(messages)
-    # Handle tool calls if returned by the model
-    if response.tool_calls:
-        for tool_call in response.tool_calls:
-            if tool_call["name"] == "save_draft_issue":
-                res = save_draft_issue.invoke(tool_call["args"])
-                print(f"Tool execution result: {res}")
-        print("Draft issues generation complete.")
-    else:
-        print("Warning: Model did not execute any tool calls. Output:")
-        print(response.content)
+    result = agent.invoke({
+        "messages": [
+            HumanMessage(content=f"PRD Content:\n{prd_content}\n\nDomain Glossary (CONTEXT.md):\n{context_content}")
+        ]
+    })
+    print("Draft issues generation complete.")
 except Exception as e:
     print(f"Error during execution: {e}", file=sys.stderr)
     sys.exit(1)
@@ -189,13 +186,13 @@ if command -v uv &> /dev/null; then
     echo "Found 'uv' package manager. Using 'uv' for virtualenv setup..."
     uv venv "$VENV_DIR" --python 3.12
     source "$VENV_DIR/bin/activate"
-    uv pip install langchain-openai langchain-core
+    uv pip install langchain-openai langchain-core deepagents
 else
     echo "'uv' not found. Using standard 'python3 -m venv'..."
     python3 -m venv "$VENV_DIR"
     source "$VENV_DIR/bin/activate"
     pip install --upgrade pip
-    pip install langchain-openai langchain-core
+    pip install langchain-openai langchain-core deepagents
 fi
 
 echo "Virtual environment ready and packages installed successfully."

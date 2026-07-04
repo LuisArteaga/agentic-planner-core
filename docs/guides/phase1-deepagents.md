@@ -25,7 +25,7 @@ To configure a new or existing target repository to work with `deepagents` and t
 2. Configures `.gitignore` in the target repository to exclude the `.planner/` folder, `.env`, and `.venv`.
 3. Copies the `draft-issues`, `grill-with-docs`, and `wise-teacher` skills into `.planner/skills/` inside the target repository.
 4. Generates a template python runner script at `.planner/run_planner.py`.
-5. Creates a local Python virtual environment (`.venv`) and installs `langchain-openai` and `langchain-core`.
+5. Creates a local Python virtual environment (`.venv`) and installs `langchain-openai`, `langchain-core`, and `deepagents`.
 
 ---
 
@@ -44,6 +44,7 @@ Example initialization from `.planner/run_planner.py`:
 import os
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
+from deepagents import create_deep_agent
 
 # 1. Initialize the LLM with OpenRouter and Responses API disabled
 model_name = os.getenv("AGENT_MODEL", "google/gemini-2.5-flash")
@@ -60,12 +61,19 @@ skill_path = os.path.join(os.path.dirname(__file__), "skills", "draft-issues", "
 with open(skill_path, "r", encoding="utf-8") as f:
     draft_issues_prompt = f.read()
 
-# 3. Bind tools and run the planning agent
-model_with_tools = llm.bind_tools([save_draft_issue])
-response = model_with_tools.invoke([
-    SystemMessage(content=draft_issues_prompt),
-    HumanMessage(content="Please split the PRD.")
-])
+# 3. Create deepagents planner
+agent = create_deep_agent(
+    model=llm,
+    tools=[save_draft_issue],
+    system_prompt=draft_issues_prompt
+)
+
+# 4. Run the planning agent
+response = agent.invoke({
+    "messages": [
+        HumanMessage(content="Please split the PRD.")
+    ]
+})
 ```
 
 ---
@@ -82,12 +90,18 @@ grill_skill_path = os.path.join(os.path.dirname(__file__), "skills", "grill-with
 with open(grill_skill_path, "r", encoding="utf-8") as f:
     grill_prompt = f.read()
 
-# Initialize planning model with the grill system prompt and file editing tools
-model_with_tools = llm.bind_tools([edit_file])
-response = model_with_tools.invoke([
-    SystemMessage(content=grill_prompt),
-    HumanMessage(content="Let's start the design session.")
-])
+# Initialize deepagent with the grill system prompt and file editing tools
+agent = create_deep_agent(
+    model=llm,
+    tools=[edit_file],
+    system_prompt=grill_prompt
+)
+
+response = agent.invoke({
+    "messages": [
+        HumanMessage(content="Let's start the design session.")
+    ]
+})
 ```
 
 ---
@@ -104,12 +118,18 @@ teacher_skill_path = os.path.join(os.path.dirname(__file__), "skills", "wise-tea
 with open(teacher_skill_path, "r", encoding="utf-8") as f:
     teacher_prompt = f.read()
 
-# Initialize planning model with the wise-teacher system prompt and interactive tools
-model_with_tools = llm.bind_tools([ask_question])
-response = model_with_tools.invoke([
-    SystemMessage(content=teacher_prompt),
-    HumanMessage(content="Please start the review session and verify my understanding.")
-])
+# Initialize deepagent with the wise-teacher system prompt and interactive tools
+agent = create_deep_agent(
+    model=llm,
+    tools=[ask_question],
+    system_prompt=teacher_prompt
+)
+
+response = agent.invoke({
+    "messages": [
+        HumanMessage(content="Please start the review session and verify my understanding.")
+    ]
+})
 ```
 
 ---
