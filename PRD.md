@@ -7,7 +7,7 @@ This document specifies the architecture and requirements for **agentic-planner-
 ## 1. Objective & High-Level Summary
 
 The goal of **agentic-planner-core** is to automate the upstream phase of software development:
-1. **Interactive Design**: Guide humans in generating robust PRDs, Glossaries (`CONTEXT.md`), and Architecture Decision Records (ADRs) using existing CLI harnesses (Aider or OpenCode) and custom skills.
+1. **Interactive Design**: Guide humans in generating robust PRDs, Glossaries (`CONTEXT.md`), and Architecture Decision Records (ADRs) using existing Python frameworks (**LangChain deepagents**) and custom skills.
 2. **Issue Splitting**: Decompose the PRD and constraints into local, granular, temporary Markdown files (**Draft Issues**).
 3. **Autonomous Refinement**: Execute a LangGraph orchestrator that iterates over each Draft Issue, performs targeted web/GitHub searches, evaluates solutions against existing ADRs, proposes/generates new ADRs if necessary, rewrites the draft issue markdown, and publishes them to the target GitHub repository.
 
@@ -20,12 +20,12 @@ By separating this planning phase from code execution:
 ## 2. Architectural Decisions & Phases
 
 ### Phase 1: Interactive PRD/ADR Guide
-* **No Code**: Instead of building a custom chat CLI, Phase 1 uses **Aider** or **OpenCode** with the `grill-with-docs` skill.
-* **PRD Template**: The planner repository provides a standard PRD template that the human and CLI harness populate during their design session.
+* **deepagents Integration**: Phase 1 uses **LangChain deepagents** in Python with the `grill-with-docs` skill to lead an interactive design session.
+* **PRD Template**: The planner repository provides a standard PRD template that the human and deepagent populate during their design session.
 * **Outputs**: `PRD.md`, `CONTEXT.md` (Domain Glossary), and initial ADRs (written directly into the target project's `GITHUB_WORKSPACE`).
 
 ### Phase 2: Draft Issue Generation
-* **Skill-Driven**: Executed via the CLI harness using a new `draft-issues` skill.
+* **Skill-Driven**: Executed via the deepagent runner using the `draft-issues` skill.
 * **Granular Decomposition**: Splitting follows **tracer-bullet vertical slices** (narrow, end-to-end verifiable paths) and resolves dependencies.
 * **Output Location**: Writes draft issues to `.planner/drafts/<repo_name>/` (added to `.gitignore` of the target project) in Markdown format following the standard issue template.
 
@@ -51,19 +51,25 @@ agentic-planner-core/
 │       ├── 0001-drei-separate-graphen.md
 │       └── 0002-strict-modus-quelleneinschraenkung.md
 ├── docs/guides/
-│   ├── phase1-aider.md                 # Setup guide for Aider
-│   └── phase1-opencode.md              # Setup guide for OpenCode
+│   └── phase1-deepagents.md            # Setup guide for LangChain deepagents
 ├── scripts/
 │   ├── review.py                       # LLM PR Review Judge implementation
 │   ├── review.sh                       # Wrapper to run review.py with OTel tracing
 │   ├── secret_scan.py                  # Local and CI secret scanning utility
+│   ├── setup-deepagents.sh             # Target repository bootstrapping script
 │   └── telemetry.py                    # Custom OTel tracing module
 ├── config/
 │   ├── grading_rubric.md               # Critic grading criteria
 │   └── sources.example.yaml            # Config structure for web search
 ├── skills/
-│   └── draft-issues/
-│       └── SKILL.md                    # Prompt skill for splitting PRDs
+│   ├── draft-issues/
+│   │   └── SKILL.md                    # Prompt skill for splitting PRDs
+│   ├── grill-with-docs/
+│   │   ├── SKILL.md                    # Prompt skill for grilling sessions
+│   │   ├── ADR-FORMAT.md               # ADR template for the grill skill
+│   │   └── CONTEXT-FORMAT.md           # Glossary template for the grill skill
+│   └── wise-teacher/
+│       └── SKILL.md                    # Prompt skill for verify learning
 ├── planner/
 │   ├── __init__.py
 │   ├── __main__.py                     # Entrypoint (refine command)

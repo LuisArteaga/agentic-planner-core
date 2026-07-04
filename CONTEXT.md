@@ -21,7 +21,7 @@ Dieses Dokument definiert die fachliche Terminologie für diesen Kontext. Es dar
 
 ### Interaktive Planungsphase (Interactive Planning Phase)
 * **Definition**: Der interaktive Prozess mit menschlicher Beteiligung (HITL), in dem Anforderungen definiert (PRD, Glossary, ADRs) und in vorläufige Entwurfs-Aufgaben (Draft Issues) aufgeteilt werden.
-* **Geschäftsregeln**: Wird durch den Benutzer in Kombination mit interaktiven Entwicklungs-Tools (z. B. Aider, OpenCode) und Prompt-Skills ausgeführt. Die Phase endet, sobald die Entwurfs-Aufgaben auf der Festplatte abgelegt sind.
+* **Geschäftsregeln**: Wird durch den Benutzer in Kombination mit interaktiven Entwicklungs-Tools (z. B. Aider, OpenCode oder **LangChain deepagents**) und Prompt-Skills ausgeführt. Die Phase endet, sobald die Entwurfs-Aufgaben auf der Festplatte abgelegt sind.
 * **Synonyme / Abzugrenzende Begriffe**: Umfasst die Begriffe *PRD-Erstellung* und *Aufgabenspaltung (Issue Splitting)*.
 
 ### Autonome Verfeinerungsphase (Autonomous Refinement Phase)
