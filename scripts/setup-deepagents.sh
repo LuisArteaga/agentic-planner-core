@@ -57,7 +57,7 @@ echo "Copied wise-teacher skill directory to target .planner directory."
 GITIGNORE="$TARGET_DIR_ABS/.gitignore"
 touch "$GITIGNORE"
 
-for entry in ".planner/" ".venv/" ".env"; do
+for entry in ".planner/" ".venv/" ".env" ".teaching-checklist.md"; do
     if ! grep -qxF "$entry" "$GITIGNORE"; then
         echo "$entry" >> "$GITIGNORE"
         echo "Added $entry to .gitignore."
@@ -76,8 +76,10 @@ from langchain_core.tools import tool
 from deepagents import create_deep_agent
 
 # 1. Retrieve the target repository name for draft issue subdirectory
-# We fetch it from environment variable or fall back to directory name
+# We fetch it from environment variable (extracting short name) or fall back to directory name
 repo_name = os.getenv("GITHUB_REPOSITORY")
+if repo_name and "/" in repo_name:
+    repo_name = repo_name.split("/")[-1]
 if not repo_name:
     # Use parent directory's name
     repo_name = Path(__file__).resolve().parents[1].name

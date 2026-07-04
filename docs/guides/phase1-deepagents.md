@@ -22,7 +22,7 @@ To configure a new or existing target repository to work with `deepagents` and t
 
 ### What the Setup Script Does:
 1. Creates the `.python-version` file specifying the Python version (matching `agentic-planner-core`).
-2. Configures `.gitignore` in the target repository to exclude the `.planner/` folder, `.env`, and `.venv`.
+2. Configures `.gitignore` in the target repository to exclude the `.planner/` folder, `.env`, `.venv`, and `.teaching-checklist.md`.
 3. Copies the `draft-issues`, `grill-with-docs`, and `wise-teacher` skills into `.planner/skills/` inside the target repository.
 4. Generates a template python runner script at `.planner/run_planner.py`.
 5. Creates a local Python virtual environment (`.venv`) and installs `langchain-openai`, `langchain-core`, and `deepagents`.
