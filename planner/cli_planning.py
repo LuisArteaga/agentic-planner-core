@@ -197,6 +197,7 @@ def run_interactive_console_loop(agent, agent_name: str, initial_message: str):
         try:
             result = agent.invoke({"messages": messages})
             print(f"\n[{agent_name}]: {result.content}\n")
+            messages.append(result)
 
             user_input = input("[You]: ")
             if user_input.strip().lower() in ["exit", "quit"]:
@@ -278,8 +279,11 @@ def run_draft(config: AppConfig):
     print(f"Target workspace: {config.github_workspace}")
     print("Connecting to OpenRouter...")
 
+    read_target_file, _ = create_target_file_tools(config)
     save_draft_issue, _ = create_planning_tools(config)
-    agent = setup_planning_agent(config, "draft-issues", [save_draft_issue])
+    agent = setup_planning_agent(
+        config, "draft-issues", [save_draft_issue, read_target_file]
+    )
 
     # Read target PRD/CONTEXT files
     prd_path = Path(config.github_workspace) / "PRD.md"
