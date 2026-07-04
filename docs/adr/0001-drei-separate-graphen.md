@@ -15,13 +15,13 @@ Der Agentic Planner umfasst drei grundlegend verschiedene Aktivitäten: (1) inte
 
 ## Betrachtete Optionen
 * **Option 1**: Ein monolithischer LangGraph mit interrupt()-Breakpoints zwischen den Phasen
-* **Option 2**: Drei separate, kompilierte LangGraphen mit je eigenem Entrypoint und State-Schema, die über Dateien im Dateisystem kommunizieren (PRD.md, CONTEXT.md, ADRs, Draft Issues)
+* **Option 2**: Drei separate, kompilierte LangGraphen mit je eigenem Entrypoint und State-Schema, die über Dateien im Dateisystem kommunizieren (PRD.md, CONTEXT.md, ADRs im Ziel-Repository; Draft Issues und Lernprüfungs-Logs zentralisiert im `.planner/drafts/` Verzeichnis des Planner-Cores)
 
 ## Entscheidung
-Option 2 — drei separate Graphen mit drei CLI-Entrypoints (z. B. `python -m planner prd`, `python -m planner split`, `python -m planner refine`). Die Kommunikation zwischen den Phasen erfolgt ausschließlich über Dateien im Ziel-Repository. Jede Phase hat ein eigenes State-Schema, einen eigenen Checkpointer und eigene Langfuse-Traces.
+Option 2 — drei separate Graphen mit drei CLI-Entrypoints (z. B. `python -m planner prd`, `python -m planner split`, `python -m planner refine`). Die Kommunikation zwischen den Phasen erfolgt über Dateien im Ziel-Repository (PRD, Glossary, ADRs) sowie im zentralisierten `.planner/drafts/` Verzeichnis des Planner-Cores (Draft Issues und Lernprüfungs-Logs). Jede Phase hat ein eigenes State-Schema, einen eigenen Checkpointer und eigene Langfuse-Traces.
 
 ### Konsequenzen
-* **Positiv**: Jede Phase sieht nur ihren eigenen Zustand — kein Context Rot. Phasen können unabhängig optimiert, getestet und getracet werden. Ein Neustart einer Phase erfordert keinen Reset der anderen.
+* **Positiv**: Jede Phase sieht nur ihren eigenen Zustand — kein Context Rot. Phasen können unabhängig optimiert, getestet und getracet werden. Ein Neustart einer Phase erfordert keinen Reset der anderen. Ziel-Repositories bleiben von Konfigurations- und Planungsdateien vollständig befreit.
 * **Negativ**: Kein geteilter in-memory State zwischen Phasen. Das Dateisystem wird zum Kommunikationskanal, was ein klares Dateiformat-Kontrakt erfordert.
 
 ## Inspiration & Referenzen
