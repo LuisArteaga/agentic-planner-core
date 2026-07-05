@@ -10,6 +10,7 @@ from opentelemetry import trace
 from planner.state import RefinementState
 from scripts.telemetry import orchestrator_phase
 from planner.nodes.evaluate_grade import load_adrs
+from planner.config import get_model
 
 logger = logging.getLogger("planner.nodes.apply_decision")
 
@@ -137,12 +138,7 @@ def apply_decision_node(state: RefinementState) -> Dict[str, Any]:
             combined_decisions += f"Existing agent AgDRs:\n{existing_agdrs}\n\n"
 
         # 2. Configure model
-        model_name = (
-            os.getenv("REFINE_APPLY_DECISION_MODEL")
-            or os.getenv("REFINE_MODEL")
-            or os.getenv("AGENT_MODEL")
-            or "moonshotai/kimi-k2.7-code"
-        )
+        model_name = get_model("apply_decision")
         model = ChatOpenAI(
             model=model_name,
             temperature=0.0,

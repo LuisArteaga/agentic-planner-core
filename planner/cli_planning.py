@@ -14,7 +14,7 @@ from langchain_core.messages import (
 )
 from langchain_core.tools import tool
 from deepagents import create_deep_agent
-from planner.config import AppConfig
+from planner.config import AppConfig, get_model
 
 
 def get_repo_name(config: AppConfig) -> str:
@@ -215,7 +215,7 @@ def ask_question(
 def get_llm(config: AppConfig, model_name: str = None) -> ChatOpenAI:
     """Instantiate ChatOpenAI configured for OpenRouter compatibility."""
     if not model_name:
-        model_name = os.getenv("AGENT_MODEL", "z-ai/glm-5.2")
+        model_name = get_model("default")
     return ChatOpenAI(
         model=model_name,
         temperature=0.0,
@@ -228,21 +228,13 @@ def get_llm(config: AppConfig, model_name: str = None) -> ChatOpenAI:
 def setup_planning_agent(config: AppConfig, skill_name: str, tools: list):
     """Factory to load skill prompts and construct the deep agent."""
     if skill_name == "grill-with-docs":
-        model_name = (
-            os.getenv("GRILL_MODEL") or os.getenv("AGENT_MODEL") or "z-ai/glm-5.2"
-        )
+        model_name = get_model("grill")
     elif skill_name == "wise-teacher":
-        model_name = (
-            os.getenv("VERIFY_MODEL") or os.getenv("AGENT_MODEL") or "z-ai/glm-5.2"
-        )
+        model_name = get_model("verify")
     elif skill_name == "draft-issues":
-        model_name = (
-            os.getenv("DRAFT_MODEL")
-            or os.getenv("AGENT_MODEL")
-            or "deepseek/deepseek-v4-pro"
-        )
+        model_name = get_model("draft")
     else:
-        model_name = os.getenv("AGENT_MODEL") or "z-ai/glm-5.2"
+        model_name = get_model("default")
 
     llm = get_llm(config, model_name=model_name)
 

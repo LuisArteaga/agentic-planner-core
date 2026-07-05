@@ -7,6 +7,7 @@ from langchain_core.messages import SystemMessage, HumanMessage
 from planner.state import RefinementState
 from langchain_openai import ChatOpenAI
 from scripts.telemetry import orchestrator_phase
+from planner.config import get_model
 
 logger = logging.getLogger("planner.nodes.web_search")
 
@@ -43,12 +44,7 @@ def web_search_node(state: RefinementState) -> Dict[str, Any]:
             return {"search_results": [], "status": "success"}
 
         # Instantiate LangChain ChatOpenAI client configured for OpenRouter
-        model_name = (
-            os.getenv("REFINE_WEB_SEARCH_MODEL")
-            or os.getenv("REFINE_MODEL")
-            or os.getenv("AGENT_MODEL")
-            or "deepseek/deepseek-v4-pro"
-        )
+        model_name = get_model("web_search")
         model = ChatOpenAI(
             model=model_name,
             temperature=0.0,
