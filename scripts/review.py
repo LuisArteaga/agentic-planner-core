@@ -16,7 +16,7 @@ scripts_dir = os.path.dirname(os.path.abspath(__file__))
 if scripts_dir not in sys.path:
     sys.path.insert(0, scripts_dir)
 
-from planner.config import resolve_model_config  # noqa: E402
+from planner.config import AppConfig, resolve_model_config  # noqa: E402
 
 from telemetry import (  # noqa: E402
     init_telemetry,
@@ -289,13 +289,11 @@ def call_llm_for_review(judge_key, system_prompt, diff, api_key):
 
 def submit_github_review(pr_number, action, body_content):
     """Submits findings using GitHub REST API directly (bypassing gh CLI wrapper)."""
-    token = os.getenv("GH_PAT") or os.getenv("GH_TOKEN")
-    if not token:
-        raise Exception("GitHub token (GH_PAT or GH_TOKEN) not found in environment.")
-
-    github_repo = os.getenv("GITHUB_REPOSITORY", "")
+    # Instantiate AppConfig to resolve tokens and session
+    config = AppConfig()
+    github_repo = config.github_repository
     if not github_repo:
-        raise Exception("GITHUB_REPOSITORY environment variable not set.")
+        raise Exception("GITHUB_REPOSITORY environment variable or config not set.")
 
     tracer = get_tracer()
     with tracer.start_as_current_span("submit_github_review") as span:
@@ -314,35 +312,24 @@ def submit_github_review(pr_number, action, body_content):
             ),
         )
 
-        def make_api_call(url_path, method="GET", payload=None):
-            url = f"https://api.github.com{url_path}"
-            data = None
-            if payload is not None:
-                data = json.dumps(payload).encode("utf-8")
-            req = urllib.request.Request(
-                url,
-                data=data,
-                headers={
-                    "Authorization": f"token {token}",
-                    "Accept": "application/vnd.github+json",
-                    "X-GitHub-Api-Version": "2022-11-28",
-                    "User-Agent": "agentic-planner-core-ci",
-                },
-                method=method,
-            )
-            with urllib.request.urlopen(req, timeout=30) as res:
-                return json.loads(res.read().decode("utf-8"))
+        session = config.get_github_session()
 
         # Get PR Author
         try:
-            pr_data = make_api_call(f"/repos/{github_repo}/pulls/{pr_number}")
+            url = f"https://api.github.com/repos/{github_repo}/pulls/{pr_number}"
+            res = session.get(url, timeout=30)
+            res.raise_for_status()
+            pr_data = res.json()
             pr_author = pr_data.get("user", {}).get("login", "")
         except Exception as e:
             raise Exception(f"Failed to fetch PR details from GitHub API: {e}")
 
         # Get Current Authenticated User
         try:
-            user_data = make_api_call("/user")
+            url = "https://api.github.com/user"
+            res = session.get(url, timeout=30)
+            res.raise_for_status()
+            user_data = res.json()
             current_user = user_data.get("login", "")
         except Exception as e:
             current_user = os.getenv("GITHUB_ACTOR", "")
@@ -363,11 +350,12 @@ def submit_github_review(pr_number, action, body_content):
         # Submit review
         try:
             review_payload = {"body": body_content, "event": api_event}
-            review_data = make_api_call(
-                f"/repos/{github_repo}/pulls/{pr_number}/reviews",
-                method="POST",
-                payload=review_payload,
+            url = (
+                f"https://api.github.com/repos/{github_repo}/pulls/{pr_number}/reviews"
             )
+            res = session.post(url, json=review_payload, timeout=30)
+            res.raise_for_status()
+            review_data = res.json()
             span.set_attribute(
                 OUTPUT_VALUE,
                 json.dumps(review_data),

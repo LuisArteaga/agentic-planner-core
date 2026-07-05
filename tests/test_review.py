@@ -41,6 +41,8 @@ def mock_env():
     os.environ.update(old_env)
 
 
+@patch("requests.Session.get")
+@patch("requests.Session.post")
 @patch("urllib.request.urlopen")
 @patch(
     "sys.stdin",
@@ -48,7 +50,7 @@ def mock_env():
         "diff --git a/file.py b/file.py\n+class HubCustomer:\n+    pass"
     ),
 )
-def test_review_all_pass(mock_stdin, mock_urlopen, mock_env):
+def test_review_all_pass(mock_stdin, mock_urlopen, mock_post, mock_get, mock_env):
     # Setup mocks
     # We expect 4 calls to OpenRouter (syntax_lint, test_coverage, architecture, security)
     # and 3 calls to GitHub API (Get PR, Get User, Post Review)
@@ -66,40 +68,42 @@ def test_review_all_pass(mock_stdin, mock_urlopen, mock_env):
         "<reasoning>Security ok</reasoning>\n<findings></findings>"
     )
 
-    pr_details = json.dumps({"user": {"login": "developer"}})
-    user_details = json.dumps({"login": "reviewer-bot"})
-    post_review_resp = json.dumps({"status": "success"})
-
-    mock_responses = [
+    mock_urlopen.side_effect = [
         make_mock_response(syntax_resp),
         make_mock_response(test_resp),
         make_mock_response(arch_resp),
         make_mock_response(sec_resp),
-        make_mock_response(pr_details),
-        make_mock_response(user_details),
-        make_mock_response(post_review_resp),
     ]
 
-    mock_urlopen.side_effect = mock_responses
+    mock_get.side_effect = [
+        MagicMock(
+            json=lambda: {"user": {"login": "developer"}}, raise_for_status=lambda: None
+        ),
+        MagicMock(
+            json=lambda: {"login": "reviewer-bot"}, raise_for_status=lambda: None
+        ),
+    ]
+    mock_post.return_value = MagicMock(
+        json=lambda: {"status": "success"}, raise_for_status=lambda: None
+    )
 
     with pytest.raises(SystemExit) as excinfo:
         main()
 
     assert excinfo.value.code == 0
-    assert mock_urlopen.call_count == 7
+    assert mock_urlopen.call_count == 4
+    assert mock_get.call_count == 2
+    assert mock_post.call_count == 1
 
-    post_call_args = mock_urlopen.call_args_list[-1][0][0]
-    assert (
-        post_call_args.full_url
-        == "https://api.github.com/repos/owner/repo/pulls/42/reviews"
-    )
-
-    payload = json.loads(post_call_args.data.decode("utf-8"))
+    post_call_args = mock_post.call_args
+    payload = post_call_args[1]["json"]
     assert payload["event"] == "APPROVE"
     assert "### 🤖 Automated LLM PR Judges Summary" in payload["body"]
     assert "✅ PASS" in payload["body"]
 
 
+@patch("requests.Session.get")
+@patch("requests.Session.post")
 @patch("urllib.request.urlopen")
 @patch(
     "sys.stdin",
@@ -107,7 +111,9 @@ def test_review_all_pass(mock_stdin, mock_urlopen, mock_env):
         "diff --git a/file.py b/file.py\n+class HubCustomer:\n+    pass"
     ),
 )
-def test_review_syntax_lint_fail_fast(mock_stdin, mock_urlopen, mock_env):
+def test_review_syntax_lint_fail_fast(
+    mock_stdin, mock_urlopen, mock_post, mock_get, mock_env
+):
     syntax_resp = make_mock_openrouter_response(
         "<reasoning>Naming convention HubCustomer failed</reasoning>\n"
         "<findings>\n"
@@ -115,27 +121,32 @@ def test_review_syntax_lint_fail_fast(mock_stdin, mock_urlopen, mock_env):
         "</findings>"
     )
 
-    pr_details = json.dumps({"user": {"login": "developer"}})
-    user_details = json.dumps({"login": "reviewer-bot"})
-    post_review_resp = json.dumps({"status": "success"})
-
-    mock_responses = [
+    mock_urlopen.side_effect = [
         make_mock_response(syntax_resp),
-        make_mock_response(pr_details),
-        make_mock_response(user_details),
-        make_mock_response(post_review_resp),
     ]
 
-    mock_urlopen.side_effect = mock_responses
+    mock_get.side_effect = [
+        MagicMock(
+            json=lambda: {"user": {"login": "developer"}}, raise_for_status=lambda: None
+        ),
+        MagicMock(
+            json=lambda: {"login": "reviewer-bot"}, raise_for_status=lambda: None
+        ),
+    ]
+    mock_post.return_value = MagicMock(
+        json=lambda: {"status": "success"}, raise_for_status=lambda: None
+    )
 
     with pytest.raises(SystemExit) as excinfo:
         main()
 
     assert excinfo.value.code == 1
-    assert mock_urlopen.call_count == 4
+    assert mock_urlopen.call_count == 1
+    assert mock_get.call_count == 2
+    assert mock_post.call_count == 1
 
-    post_call_args = mock_urlopen.call_args_list[-1][0][0]
-    payload = json.loads(post_call_args.data.decode("utf-8"))
+    post_call_args = mock_post.call_args
+    payload = post_call_args[1]["json"]
     assert payload["event"] == "REQUEST_CHANGES"
 
     body = payload["body"]
@@ -144,6 +155,8 @@ def test_review_syntax_lint_fail_fast(mock_stdin, mock_urlopen, mock_env):
     assert "Q3" in body and "❌ FAIL" in body
 
 
+@patch("requests.Session.get")
+@patch("requests.Session.post")
 @patch("urllib.request.urlopen")
 @patch(
     "sys.stdin",
@@ -151,7 +164,9 @@ def test_review_syntax_lint_fail_fast(mock_stdin, mock_urlopen, mock_env):
         "diff --git a/file.py b/file.py\n+class HubCustomer:\n+    pass"
     ),
 )
-def test_review_api_error_resilience(mock_stdin, mock_urlopen, mock_env):
+def test_review_api_error_resilience(
+    mock_stdin, mock_urlopen, mock_post, mock_get, mock_env
+):
     syntax_resp = make_mock_openrouter_response(
         "<reasoning>Syntax OK</reasoning>\n<findings></findings>"
     )
@@ -161,10 +176,6 @@ def test_review_api_error_resilience(mock_stdin, mock_urlopen, mock_env):
     sec_resp = make_mock_openrouter_response(
         "<reasoning>Security OK</reasoning>\n<findings></findings>"
     )
-
-    pr_details = json.dumps({"user": {"login": "developer"}})
-    user_details = json.dumps({"login": "reviewer-bot"})
-    post_review_resp = json.dumps({"status": "success"})
 
     call_count = [0]
 
@@ -183,22 +194,28 @@ def test_review_api_error_resilience(mock_stdin, mock_urlopen, mock_env):
             elif call_count[0] == 3:
                 call_count[0] += 1
                 return make_mock_response(sec_resp)
-        elif "pulls/" in url and "reviews" not in url:
-            return make_mock_response(pr_details)
-        elif "user" in url:
-            return make_mock_response(user_details)
-        elif "reviews" in url:
-            return make_mock_response(post_review_resp)
 
     mock_urlopen.side_effect = urlopen_side_effect
+
+    mock_get.side_effect = [
+        MagicMock(
+            json=lambda: {"user": {"login": "developer"}}, raise_for_status=lambda: None
+        ),
+        MagicMock(
+            json=lambda: {"login": "reviewer-bot"}, raise_for_status=lambda: None
+        ),
+    ]
+    mock_post.return_value = MagicMock(
+        json=lambda: {"status": "success"}, raise_for_status=lambda: None
+    )
 
     with pytest.raises(SystemExit) as excinfo:
         main()
 
     assert excinfo.value.code == 1
 
-    post_call_args = mock_urlopen.call_args_list[-1][0][0]
-    payload = json.loads(post_call_args.data.decode("utf-8"))
+    post_call_args = mock_post.call_args
+    payload = post_call_args[1]["json"]
     assert payload["event"] == "REQUEST_CHANGES"
 
     body = payload["body"]
