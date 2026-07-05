@@ -1,6 +1,6 @@
-.PHONY: verify test lint format-check
+.PHONY: verify test lint format-check type-check
 
-verify: lint format-check test
+verify: lint format-check type-check test
 
 test:
 	python -m pytest
@@ -10,3 +10,6 @@ lint:
 
 format-check:
 	python -m ruff format --check planner tests
+
+type-check:
+	python -m mypy planner tests scripts

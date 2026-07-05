@@ -52,7 +52,7 @@ jobs:
         run: pytest --cov=planner --cov-fail-under=80
 
       - name: Run Semgrep Security Scan
-        run: pipx run semgrep scan --config=auto --error
+        run: pipx run semgrep scan planner tests scripts --config=auto --error
 
       - name: Run Pip-Audit Dependency Check
         run: pip-audit .

@@ -1,0 +1,22 @@
+{
+  "factory_version": "2026.2.0",
+  "cli_orchestration": {
+    "grill": { "model": "provider/model-name", "routing": ["ProviderA", "ProviderB"], "temperature": 0.0 },
+    "verify": { "model": "provider/model-name", "routing": ["ProviderA", "ProviderB"], "temperature": 0.0 },
+    "draft": { "model": "provider/model-name-reasoning", "routing": ["ProviderA", "ProviderB"], "options": { "thinking": "max" }, "temperature": 0.0 }
+  },
+  "refine_graph_nodes": {
+    "analyze_sources": { "model": "provider/model-name-flash", "routing": ["ProviderA", "ProviderB"], "options": { "thinking": "high" } },
+    "web_search": { "model": "provider/model-name-flash", "routing": ["ProviderA", "ProviderB"], "options": { "thinking": "none" } },
+    "propose_options": { "model": "provider/model-name-reasoning", "routing": ["ProviderA", "ProviderB"], "options": { "thinking": "max" } },
+    "evaluate_grade": { "model": "provider/model-name", "routing": ["ProviderA", "ProviderB"], "temperature": 0.0 },
+    "apply_decision": { "model": "provider/model-name-code", "routing": ["ProviderA"], "temperature": 0.0 },
+    "publish_issue": { "model": "provider/model-name-code", "routing": ["ProviderA"], "temperature": 0.0 }
+  },
+  "ci_cd_pr_judges": {
+    "syntax_lint": { "model": "provider/model-name-code", "routing": ["ProviderA"] },
+    "test_coverage": { "model": "provider/model-name-code", "routing": ["ProviderA"] },
+    "architecture": { "model": "provider/model-name", "routing": ["ProviderA", "ProviderB"] },
+    "security": { "model": "provider/model-name-reasoning", "routing": ["ProviderA", "ProviderB"], "options": { "thinking": "max" } }
+  }
+}

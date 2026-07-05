@@ -118,3 +118,160 @@ def test_github_workspace_resolution(clean_env):
     assert "Path traversal detected" in str(exc.value)
 
     os.unlink(temp_file)
+
+
+def test_factory_config_invalid_json(clean_env):
+    os.environ["OPENROUTER_API_KEY"] = "test-key"
+    os.environ["GH_PAT"] = "test-pat"
+    os.environ["GITHUB_REPOSITORY"] = "test/repo"
+
+    sources_temp = create_temp_yaml({"strict": False})
+    # Create invalid json file
+    temp_json = tempfile.NamedTemporaryFile(
+        delete=False, suffix=".json", mode="w", encoding="utf-8"
+    )
+    temp_json.write("{invalid json: }")
+    temp_json.close()
+
+    with pytest.raises(ValueError) as exc:
+        AppConfig(sources_yaml_path=sources_temp, factory_json_path=temp_json.name)
+    assert "Invalid JSON format" in str(exc.value)
+
+    os.unlink(sources_temp)
+    os.unlink(temp_json.name)
+
+
+def test_factory_config_missing_file(clean_env):
+    os.environ["OPENROUTER_API_KEY"] = "test-key"
+    os.environ["GH_PAT"] = "test-pat"
+    os.environ["GITHUB_REPOSITORY"] = "test/repo"
+
+    sources_temp = create_temp_yaml({"strict": False})
+
+    with pytest.raises(FileNotFoundError) as exc:
+        AppConfig(
+            sources_yaml_path=sources_temp, factory_json_path="nonexistent_factory.json"
+        )
+    assert "Factory configuration file not found" in str(exc.value)
+
+    os.unlink(sources_temp)
+
+
+def test_resolve_model_config_overrides(clean_env):
+    # Test resolve_model_config with env overrides
+    os.environ["AGENT_MODEL"] = "env-agent-model"
+    os.environ["PR_SYNTAX_LINT_MODEL"] = "syntax-model-override"
+
+    from planner.config import resolve_model_config
+
+    cfg = resolve_model_config("syntax_lint")
+    assert cfg["model"] == "syntax-model-override"
+    assert cfg["routing"] is None  # routing is disabled for overrides
+
+    cfg_test = resolve_model_config("test_coverage")
+    assert cfg_test["model"] == "env-agent-model"
+    assert cfg_test["routing"] is None
+
+
+def test_factory_config_positive_parsing(clean_env):
+    os.environ["OPENROUTER_API_KEY"] = "test-key"
+    os.environ["GH_PAT"] = "test-pat"
+    os.environ["GITHUB_REPOSITORY"] = "test/repo"
+
+    sources_temp = create_temp_yaml({"strict": False})
+    # Create valid factory json
+    valid_factory_data = {
+        "factory_version": "2026.2.0",
+        "cli_orchestration": {
+            "grill": {
+                "model": "z-ai/glm-5.2",
+                "routing": ["Friendli"],
+                "temperature": 0.5,
+            }
+        },
+        "refine_graph_nodes": {
+            "analyze_sources": {
+                "model": "deepseek/deepseek-v4-flash",
+                "options": {"thinking": "high"},
+            }
+        },
+        "ci_cd_pr_judges": {"syntax_lint": {"model": "moonshotai/kimi-k2.7-code"}},
+    }
+
+    temp_json = tempfile.NamedTemporaryFile(
+        delete=False, suffix=".json", mode="w", encoding="utf-8"
+    )
+    import json
+
+    json.dump(valid_factory_data, temp_json)
+    temp_json.close()
+
+    # Verify AppConfig starts successfully with valid factory.json
+    config = AppConfig(sources_yaml_path=sources_temp, factory_json_path=temp_json.name)
+    assert config is not None
+
+    # Verify resolve_model_config fallback logic reads from our factory
+    from planner.config import resolve_model_config
+
+    # Force _load_factory_config to return our custom mocked factory
+    from unittest.mock import patch
+
+    with patch("planner.config._load_factory_config") as mock_load:
+        from planner.config import FactoryConfig
+
+        mock_load.return_value = FactoryConfig.model_validate(valid_factory_data)
+
+        # 1. Resolve grill from factory (using custom temperature)
+        cfg_grill = resolve_model_config("grill")
+        assert cfg_grill["model"] == "z-ai/glm-5.2"
+        assert cfg_grill["routing"] == ["Friendli"]
+        assert cfg_grill["temperature"] == 0.5
+
+        # 2. Resolve evaluate_grade (not in factory orchestration -> uses code defaults)
+        cfg_grade = resolve_model_config("evaluate_grade")
+        assert cfg_grade["model"] == "z-ai/glm-5.2"  # default
+        assert cfg_grade["routing"] is None  # default
+        assert cfg_grade["temperature"] == 0.0  # default
+
+    os.unlink(sources_temp)
+    os.unlink(temp_json.name)
+
+
+def test_get_llm_construction(clean_env):
+    os.environ["OPENROUTER_API_KEY"] = "test-key"
+    os.environ["GH_PAT"] = "test-pat"
+    os.environ["GITHUB_REPOSITORY"] = "test/repo"
+
+    from planner.config import get_llm
+    from unittest.mock import patch, MagicMock
+
+    with patch("planner.config.resolve_model_config") as mock_resolve:
+        mock_resolve.return_value = {
+            "model": "deepseek/deepseek-v4-pro",
+            "routing": ["Together", "Novita"],
+            "temperature": 0.2,
+            "options": {"thinking": "max"},
+        }
+
+        # Mock ChatOpenAI to avoid real network/package instantiation overhead
+        with patch("planner.config.ChatOpenAI") as mock_chat_openai:
+            mock_chat_openai.return_value = MagicMock()
+
+            client = get_llm("draft")
+            assert client is not None
+
+            mock_chat_openai.assert_called_once()
+            called_kwargs = mock_chat_openai.call_args[1]
+            assert called_kwargs["model"] == "deepseek/deepseek-v4-pro"
+            assert called_kwargs["temperature"] == 0.2
+            assert called_kwargs["openai_api_base"] == "https://openrouter.ai/api/v1"
+            assert called_kwargs["openai_api_key"] == "test-key"
+            assert called_kwargs["use_responses_api"] is False
+
+            # Verify provider routing and thinking options are correctly mapped to extra_body
+            extra_body = called_kwargs["model_kwargs"]["extra_body"]
+            assert extra_body["provider"] == {
+                "order": ["together", "novita"],
+                "allow_fallbacks": False,
+            }
+            assert extra_body["thinking"] == "max"
