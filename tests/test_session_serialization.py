@@ -143,6 +143,18 @@ def test_save_grill_session_directory_traversal_protection(temp_workspace):
         mock_stderr.assert_called()
 
 
+def test_save_grill_session_repo_name_traversal_protection(temp_workspace):
+    config, _ = temp_workspace
+    # Attempt directory traversal in repository name
+    config.github_repository = "some-org/.."
+    messages = [HumanMessage(content="Test")]
+
+    # Should not throw but print error to stderr
+    with patch("sys.stderr.write") as mock_stderr:
+        save_grill_session(config, "safe-session", messages, completed=False)
+        mock_stderr.assert_called()
+
+
 def test_save_grill_session_failure_caught(temp_workspace):
     config, _ = temp_workspace
     session_id = "test-fail"

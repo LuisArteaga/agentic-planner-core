@@ -253,20 +253,27 @@ def save_grill_session(
     try:
         repo_name = get_repo_name(config)
         planner_core_root = Path(__file__).resolve().parents[1]
-        sessions_dir = (
-            planner_core_root / ".planner" / "sessions" / repo_name
-        ).resolve()
-        sessions_dir.mkdir(parents=True, exist_ok=True)
+        sessions_base = (planner_core_root / ".planner" / "sessions").resolve()
+
+        # Prevent directory traversal for sessions_dir
+        sessions_dir = (sessions_base / repo_name).resolve()
+        try:
+            sessions_dir.relative_to(sessions_base)
+        except ValueError:
+            print("Error: Session directory traversal detected.", file=sys.stderr)
+            return
 
         filename = f"grill_{session_id}.json"
-        target_file = sessions_dir / filename
+        target_file = (sessions_dir / filename).resolve()
 
-        # Prevent directory traversal
+        # Prevent directory traversal for target_file
         try:
             target_file.relative_to(sessions_dir)
         except ValueError:
             print("Error: Session file traversal detected.", file=sys.stderr)
             return
+
+        sessions_dir.mkdir(parents=True, exist_ok=True)
 
         serialized_messages = serialize_messages(messages)
         last_modified = datetime.datetime.now().astimezone().isoformat()
