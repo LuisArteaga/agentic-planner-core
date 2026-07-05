@@ -1,9 +1,17 @@
+import datetime
+import json
 import os
 import re
 import sys
 from pathlib import Path
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import (
+    BaseMessage,
+    HumanMessage,
+    AIMessage,
+    SystemMessage,
+    ToolMessage,
+)
 from langchain_core.tools import tool
 from deepagents import create_deep_agent
 from planner.config import AppConfig
@@ -188,9 +196,116 @@ def setup_planning_agent(config: AppConfig, skill_name: str, tools: list):
     return create_deep_agent(model=llm, tools=tools, system_prompt=skill_prompt)
 
 
-def run_interactive_console_loop(agent, agent_name: str, initial_message: str):
+def serialize_messages(messages: list[BaseMessage]) -> list[dict]:
+    """Serializes LangChain messages into standard dictionaries."""
+    serialized = []
+    for msg in messages:
+        if isinstance(msg, HumanMessage):
+            serialized.append({"type": "human", "content": msg.content})
+        elif isinstance(msg, AIMessage):
+            serialized.append(
+                {"type": "ai", "content": msg.content, "tool_calls": msg.tool_calls}
+            )
+        elif isinstance(msg, SystemMessage):
+            serialized.append({"type": "system", "content": msg.content})
+        elif isinstance(msg, ToolMessage):
+            serialized.append(
+                {
+                    "type": "tool",
+                    "content": msg.content,
+                    "tool_call_id": msg.tool_call_id,
+                    "name": msg.name,
+                }
+            )
+
+    return serialized
+
+
+def deserialize_messages(serialized: list[dict]) -> list[BaseMessage]:
+    """Deserializes dictionaries back into LangChain messages."""
+    deserialized = []
+    for msg_dict in serialized:
+        msg_type = msg_dict.get("type")
+        content = msg_dict.get("content", "")
+        if msg_type == "human":
+            deserialized.append(HumanMessage(content=content))
+        elif msg_type == "ai":
+            tool_calls = msg_dict.get("tool_calls", [])
+            deserialized.append(AIMessage(content=content, tool_calls=tool_calls))
+        elif msg_type == "system":
+            deserialized.append(SystemMessage(content=content))
+        elif msg_type == "tool":
+            tool_call_id = msg_dict.get("tool_call_id")
+            name = msg_dict.get("name")
+            deserialized.append(
+                ToolMessage(content=content, tool_call_id=tool_call_id, name=name)
+            )
+    return deserialized
+
+
+def save_grill_session(
+    config: AppConfig,
+    session_id: str,
+    messages: list[BaseMessage],
+    completed: bool = False,
+):
+    """Saves the current grill session to .planner/sessions/{repo_name}/grill_{session_id}.json."""
+    try:
+        repo_name = get_repo_name(config)
+        planner_core_root = Path(__file__).resolve().parents[1]
+        sessions_base = (planner_core_root / ".planner" / "sessions").resolve()
+
+        # Prevent directory traversal for sessions_dir
+        sessions_dir = (sessions_base / repo_name).resolve()
+        try:
+            sessions_dir.relative_to(sessions_base)
+        except ValueError:
+            print("Error: Session directory traversal detected.", file=sys.stderr)
+            return
+
+        filename = f"grill_{session_id}.json"
+        target_file = (sessions_dir / filename).resolve()
+
+        # Prevent directory traversal for target_file
+        try:
+            target_file.relative_to(sessions_dir)
+        except ValueError:
+            print("Error: Session file traversal detected.", file=sys.stderr)
+            return
+
+        sessions_dir.mkdir(parents=True, exist_ok=True)
+
+        serialized_messages = serialize_messages(messages)
+        last_modified = datetime.datetime.now().astimezone().isoformat()
+
+        session_data = {
+            "session_id": f"grill_{session_id}",
+            "last_modified": last_modified,
+            "completed": completed,
+            "messages": serialized_messages,
+        }
+
+        with open(target_file, "w", encoding="utf-8") as f:
+            json.dump(session_data, f, ensure_ascii=False, indent=2)
+
+    except Exception as e:
+        print(f"Warning: Auto-saving grill session failed: {e}", file=sys.stderr)
+
+
+def run_interactive_console_loop(
+    agent,
+    agent_name: str,
+    initial_message: str,
+    config: AppConfig = None,
+    session_id: str = None,
+):
     """Generic interactive console chat loop for planning agents."""
     messages = [HumanMessage(content=initial_message)]
+
+    # Initial save if auto-saving is active
+    if config and session_id:
+        save_grill_session(config, session_id, messages, completed=False)
+
     print(f"\n[{agent_name}]: Initializing session... (Type 'exit' or 'quit' to end)\n")
 
     while True:
@@ -205,12 +320,24 @@ def run_interactive_console_loop(agent, agent_name: str, initial_message: str):
 
             print(f"\n[{agent_name}]: {response_message.content}\n")
 
+            # Save state after agent step
+            if config and session_id:
+                save_grill_session(config, session_id, messages, completed=False)
+
             user_input = input("[You]: ")
             if user_input.strip().lower() in ["exit", "quit"]:
                 print(f"Ending {agent_name} session.")
+                # Save state as completed
+                if config and session_id:
+                    save_grill_session(config, session_id, messages, completed=True)
                 break
 
             messages.append(HumanMessage(content=user_input))
+
+            # Save state after user input
+            if config and session_id:
+                save_grill_session(config, session_id, messages, completed=False)
+
         except KeyboardInterrupt:
             print("\nSession interrupted.")
             break
@@ -244,7 +371,16 @@ def run_grill(config: AppConfig):
                 f"\n\nExisting CONTEXT.md glossary content:\n{f.read()}"
             )
 
-    run_interactive_console_loop(agent, "Grill Agent", initial_user_message)
+    # Generate timestamp-based session_id: e.g. "2026-07-05_07-40-00"
+    session_id = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+
+    run_interactive_console_loop(
+        agent,
+        "Grill Agent",
+        initial_user_message,
+        config=config,
+        session_id=session_id,
+    )
 
 
 def run_verify(config: AppConfig):

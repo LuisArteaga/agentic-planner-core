@@ -50,3 +50,13 @@ Dieses Dokument definiert die fachliche Terminologie für diesen Kontext. Es dar
   * AgDR-Dokumente werden im Ziel-Repository im Verzeichnis `docs/agdr/` abgelegt.
 * **Synonyme / Abzugrenzende Begriffe**: Abzugrenzen von klassischen, rein manuell durch menschliche Architekten erstellten Architekturentscheidungen (ADR).
 
+### Grill-Session (Grill Session)
+* **Definition**: Die interaktive Fragerunde (grill-with-docs) zwischen der Person und dem Planner-Agenten zur Abstimmung des Designs eines Ziel-Repositories. Sie dient der Veredelung des PRD, der Glossareinträge und der Architekturentscheidungen.
+* **Geschäftsregeln**: Die Grill-Session wird lokal serialisiert und bei jedem Interaktionsschritt (nach jedem Agentenschritt und jeder Benutzereingabe) automatisch unter einem zeitstempelbasierten Dateinamen gesichert, um den Sitzungszustand abzusichern.
+* **Synonyme / Abzugrenzende Begriffe**: Nicht zu verwechseln mit der autonomen Verfeinerungsphase.
+
+### Sitzungs-Serialisierung (Session Serialization)
+* **Definition**: Der Prozess, bei dem der Verlauf einer Grill-Session inklusive aller Benutzer- und Agenten-Nachrichten in einem standardisierten JSON-Format persistiert wird.
+* **Geschäftsregeln**: Jede Nachricht wird mit ihrem Typ (`human`, `ai`, `system`, `tool`) und Inhalt serialisiert. Tool-Aufrufe (`tool_calls`) und Tool-Antworten werden mitgesichert, um die Interaktionshistorie vollständig abzubilden.
+
+
