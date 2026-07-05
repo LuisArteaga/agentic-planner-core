@@ -52,7 +52,9 @@ Dieses Dokument definiert die fachliche Terminologie für diesen Kontext. Es dar
 
 ### Grill-Session (Grill Session)
 * **Definition**: Die interaktive Fragerunde (grill-with-docs) zwischen der Person und dem Planner-Agenten zur Abstimmung des Designs eines Ziel-Repositories. Sie dient der Veredelung des PRD, der Glossareinträge und der Architekturentscheidungen.
-* **Geschäftsregeln**: Die Grill-Session wird lokal serialisiert und bei jedem Interaktionsschritt (nach jedem Agentenschritt und jeder Benutzereingabe) automatisch unter einem zeitstempelbasierten Dateinamen gesichert, um den Sitzungszustand abzusichern.
+* **Geschäftsregeln**:
+  * Die Grill-Session wird lokal serialisiert und bei jedem Interaktionsschritt (nach jedem Agentenschritt und jeder Benutzereingabe) automatisch unter einem zeitstempelbasierten Dateinamen gesichert, um den Sitzungszustand abzusichern.
+  * Eine unvollständige Grill-Session kann beim Start der CLI fortgesetzt werden. Hierbei wird der gespeicherte Nachrichtenverlauf deserialisiert und die Interaktion an der Stelle des letzten Beitrags wieder aufgenommen.
 * **Synonyme / Abzugrenzende Begriffe**: Nicht zu verwechseln mit der autonomen Verfeinerungsphase.
 
 ### Sitzungs-Serialisierung (Session Serialization)
