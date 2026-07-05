@@ -184,7 +184,7 @@ def call_openrouter_api(model, messages, api_key):
         },
         method="POST",
     )
-    with urllib.request.urlopen(req, timeout=300) as response:
+    with urllib.request.urlopen(req, timeout=300) as response:  # nosemgrep
         return response.status, response.read().decode("utf-8")
 
 

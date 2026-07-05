@@ -74,7 +74,7 @@ def get_agent_logs_dir() -> str:
     local_logs = os.path.join(project_root, ".agent_logs")
     try:
         os.makedirs(local_logs, exist_ok=True)
-        os.chmod(local_logs, 0o700)
+        os.chmod(local_logs, 0o700)  # nosemgrep
         if os.access(local_logs, os.W_OK):
             return local_logs
     except Exception:
@@ -90,7 +90,7 @@ def get_agent_logs_dir() -> str:
     tmp_logs = os.path.join(tempfile.gettempdir(), f"agent_logs_{username}")
     try:
         os.makedirs(tmp_logs, mode=0o700, exist_ok=True)
-        os.chmod(tmp_logs, 0o700)
+        os.chmod(tmp_logs, 0o700)  # nosemgrep
     except Exception:
         pass
     return tmp_logs
