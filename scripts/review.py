@@ -7,6 +7,7 @@ import urllib.error
 import subprocess
 import time
 from typing import List, Tuple, Dict, Any
+import requests
 
 # Add project root and scripts dir to sys.path
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -16,7 +17,7 @@ scripts_dir = os.path.dirname(os.path.abspath(__file__))
 if scripts_dir not in sys.path:
     sys.path.insert(0, scripts_dir)
 
-from planner.config import AppConfig, resolve_model_config  # noqa: E402
+from planner.config import resolve_model_config  # noqa: E402
 
 from telemetry import (  # noqa: E402
     init_telemetry,
@@ -294,11 +295,13 @@ def call_llm_for_review(judge_key, system_prompt, diff, api_key):
 
 def submit_github_review(pr_number, action, body_content):
     """Submits findings using GitHub REST API directly (bypassing gh CLI wrapper)."""
-    # Instantiate AppConfig to resolve tokens and session
-    config = AppConfig()
-    github_repo = config.github_repository
+    token = os.getenv("GH_PAT") or os.getenv("GH_TOKEN")
+    if not token:
+        raise Exception("GitHub token (GH_PAT or GH_TOKEN) not found in environment.")
+
+    github_repo = os.getenv("GITHUB_REPOSITORY", "")
     if not github_repo:
-        raise Exception("GITHUB_REPOSITORY environment variable or config not set.")
+        raise Exception("GITHUB_REPOSITORY environment variable not set.")
 
     tracer = get_tracer()
     with tracer.start_as_current_span("submit_github_review") as span:
@@ -317,7 +320,23 @@ def submit_github_review(pr_number, action, body_content):
             ),
         )
 
-        session = config.get_github_session()
+        from urllib3.util import Retry
+        from requests.adapters import HTTPAdapter
+
+        session = requests.Session()
+        session.headers.update(
+            {
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28",
+            }
+        )
+        retries = Retry(
+            total=5,
+            backoff_factor=1,
+            status_forcelist=[403, 429, 500, 502, 503, 504],
+        )
+        session.mount("https://", HTTPAdapter(max_retries=retries))
 
         # Get PR Author
         try:

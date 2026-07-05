@@ -225,3 +225,35 @@ def test_review_api_error_resilience(
     assert "Architektur-Compliance" in body
     assert "Deep Security Audit" in body
     assert "Check failed to run: LLM review failed after retries." in body
+
+
+@patch("requests.Session.get")
+@patch("requests.Session.post")
+def test_submit_github_review_author_comment(mock_post, mock_get, mock_env):
+    # Test submit_github_review when current_user == pr_author
+    # It must map the event to COMMENT instead of REQUEST_CHANGES/APPROVE
+
+    mock_get.side_effect = [
+        # Get PR (returns user.login = developer)
+        MagicMock(
+            json=lambda: {"user": {"login": "developer"}}, raise_for_status=lambda: None
+        ),
+        # Get Current User (returns login = developer)
+        MagicMock(json=lambda: {"login": "developer"}, raise_for_status=lambda: None),
+    ]
+    mock_post.return_value = MagicMock(
+        json=lambda: {"status": "success"}, raise_for_status=lambda: None
+    )
+
+    from scripts.review import submit_github_review
+
+    submit_github_review(42, "approve", "This is some review body content")
+
+    assert mock_get.call_count == 2
+    assert mock_post.call_count == 1
+
+    post_call_args = mock_post.call_args
+    payload = post_call_args[1]["json"]
+    # Even though we requested 'approve', since current_user == pr_author, it maps to 'COMMENT'
+    assert payload["event"] == "COMMENT"
+    assert payload["body"] == "This is some review body content"

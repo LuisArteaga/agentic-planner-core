@@ -124,27 +124,7 @@ class AppConfig:
             raise ValueError(f"Configuration validation failed: {e}")
 
         # Parse and validate factory.json
-        json_path = pathlib.Path(factory_json_path)
-        if not json_path.exists():
-            # Fallback path if we are running from a different working directory (e.g. tests)
-            project_root = pathlib.Path(__file__).resolve().parents[1]
-            json_path = project_root / factory_json_path
-
-        if not json_path.exists():
-            raise FileNotFoundError(
-                f"Factory configuration file not found: {factory_json_path}"
-            )
-
-        try:
-            with open(json_path, "r", encoding="utf-8") as f:
-                factory_data = json.load(f)
-        except Exception as e:
-            raise ValueError(f"Invalid JSON format in {factory_json_path}: {e}")
-
-        try:
-            self.factory = FactoryConfig.model_validate(factory_data)
-        except Exception as e:
-            raise ValueError(f"Factory configuration validation failed: {e}")
+        _load_factory_config(factory_json_path)
 
     def get_github_session(self) -> requests.Session:
         """Returns a requests.Session configured with a robust retry strategy and auth headers."""
@@ -186,7 +166,7 @@ class FactoryConfig(BaseModel):
 @functools.lru_cache(maxsize=1)
 def _load_factory_config(
     filepath: str = "config/factory.json",
-) -> Optional[FactoryConfig]:
+) -> FactoryConfig:
     """Loads and validates config/factory.json with caching."""
     path = pathlib.Path(filepath)
     if not path.exists():
@@ -194,13 +174,17 @@ def _load_factory_config(
         project_root = pathlib.Path(__file__).resolve().parents[1]
         path = project_root / filepath
         if not path.exists():
-            return None
+            raise FileNotFoundError(f"Factory configuration file not found: {filepath}")
     try:
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
+    except Exception as e:
+        raise ValueError(f"Invalid JSON format in {filepath}: {e}")
+
+    try:
         return FactoryConfig.model_validate(data)
-    except Exception:
-        return None
+    except Exception as e:
+        raise ValueError(f"Factory configuration validation failed: {e}")
 
 
 def resolve_model_config(phase_or_node: str) -> dict:
@@ -250,26 +234,29 @@ def resolve_model_config(phase_or_node: str) -> dict:
 
     # 2. Get factory settings if available
     factory_cfg = None
-    factory = _load_factory_config()
-    if factory:
-        if phase_or_node in ["grill", "verify", "draft"]:
-            factory_cfg = factory.cli_orchestration.get(phase_or_node)
-        elif phase_or_node in [
-            "analyze_sources",
-            "web_search",
-            "propose_options",
-            "evaluate_grade",
-            "apply_decision",
-            "publish_issue",
-        ]:
-            factory_cfg = factory.refine_graph_nodes.get(phase_or_node)
-        elif phase_or_node in [
-            "syntax_lint",
-            "test_coverage",
-            "architecture",
-            "security",
-        ]:
-            factory_cfg = factory.ci_cd_pr_judges.get(phase_or_node)
+    try:
+        factory = _load_factory_config()
+        if factory:
+            if phase_or_node in ["grill", "verify", "draft"]:
+                factory_cfg = factory.cli_orchestration.get(phase_or_node)
+            elif phase_or_node in [
+                "analyze_sources",
+                "web_search",
+                "propose_options",
+                "evaluate_grade",
+                "apply_decision",
+                "publish_issue",
+            ]:
+                factory_cfg = factory.refine_graph_nodes.get(phase_or_node)
+            elif phase_or_node in [
+                "syntax_lint",
+                "test_coverage",
+                "architecture",
+                "security",
+            ]:
+                factory_cfg = factory.ci_cd_pr_judges.get(phase_or_node)
+    except Exception:
+        pass
 
     # 3. Define fallback defaults (normalized to kimi-2.7-code etc.)
     default_models = {
