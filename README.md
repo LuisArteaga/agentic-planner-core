@@ -47,7 +47,7 @@ Variables inside `.env`:
 * `OPENROUTER_API_KEY`: Your OpenRouter API Key
 * `GH_PAT`: Your GitHub Personal Access Token
 * `GITHUB_REPOSITORY`: The target repository in the format `owner/repo`
-* `GITHUB_WORKSPACE`: The absolute path to the target repository on your system
+* `GITHUB_WORKSPACE`: The absolute path to the target repository on your system (or a relative path, which will be resolved relative to `.workspaces/` in the project root)
 * `AGENT_MODEL`: (Optional) The model to use (e.g., `z-ai/glm-5.2`, defaults to `moonshotai/kimi-k2.7-code`)
 
 Alternatively, you can export these environment variables directly in your shell:
@@ -55,7 +55,7 @@ Alternatively, you can export these environment variables directly in your shell
 export OPENROUTER_API_KEY="your-openrouter-key"
 export GH_PAT="your-github-token"
 export GITHUB_REPOSITORY="owner/target-repo"
-export GITHUB_WORKSPACE="/absolute/path/to/target-repo"
+export GITHUB_WORKSPACE="/absolute/path/to/target-repo" # Or a relative path like "owner/target-repo"
 export AGENT_MODEL="z-ai/glm-5.2"
 ```
 

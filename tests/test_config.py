@@ -74,3 +74,41 @@ def test_strict_mode_without_sources(clean_env):
     assert "At least one source must be defined" in str(exc.value)
 
     os.unlink(temp_file)
+
+
+def test_github_workspace_resolution(clean_env):
+    os.environ["OPENROUTER_API_KEY"] = "test-key"
+    os.environ["GH_PAT"] = "test-pat"
+    os.environ["GITHUB_REPOSITORY"] = "test/repo"
+
+    yaml_data = {"strict": False}
+    temp_file = create_temp_yaml(yaml_data)
+
+    # 1. Test relative path resolution
+    os.environ["GITHUB_WORKSPACE"] = "sub/dir"
+    config = AppConfig(sources_yaml_path=temp_file)
+    from pathlib import Path
+
+    expected_root = Path(__file__).resolve().parents[1]
+    assert config.github_workspace == str(
+        (expected_root / ".workspaces" / "sub/dir").resolve()
+    )
+    assert os.environ["GITHUB_WORKSPACE"] == config.github_workspace
+
+    # 2. Test absolute path resolution
+    import tempfile as tf
+
+    with tf.TemporaryDirectory() as tmpdir:
+        os.environ["GITHUB_WORKSPACE"] = tmpdir
+        config = AppConfig(sources_yaml_path=temp_file)
+        assert config.github_workspace == str(Path(tmpdir).resolve())
+        assert os.environ["GITHUB_WORKSPACE"] == config.github_workspace
+
+    # 3. Test default fallback when unset
+    if "GITHUB_WORKSPACE" in os.environ:
+        del os.environ["GITHUB_WORKSPACE"]
+    config = AppConfig(sources_yaml_path=temp_file)
+    assert config.github_workspace == os.getcwd()
+    assert os.environ["GITHUB_WORKSPACE"] == os.getcwd()
+
+    os.unlink(temp_file)
