@@ -346,7 +346,7 @@ def get_llm(phase_or_node: str) -> "ChatOpenAI":
 
     api_key = os.getenv("OPENROUTER_API_KEY")
 
-    model_kwargs = {}
+    model_kwargs: Dict[str, Any] = {}
     extra_body = {}
     if routing:
         extra_body["provider"] = {
@@ -365,5 +365,5 @@ def get_llm(phase_or_node: str) -> "ChatOpenAI":
         openai_api_base="https://openrouter.ai/api/v1",
         openai_api_key=api_key,
         use_responses_api=False,
-        model_kwargs=model_kwargs if model_kwargs else None,
+        model_kwargs=model_kwargs,
     )

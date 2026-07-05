@@ -6,7 +6,7 @@ import urllib.request
 import urllib.error
 import subprocess
 import time
-from typing import List, Tuple
+from typing import List, Tuple, Dict, Any
 
 # Add project root and scripts dir to sys.path
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -537,7 +537,7 @@ def main():
             sys.stderr.write("[ERR] OPENROUTER_API_KEY not configured.\n")
             sys.exit(1)
 
-        judges_data = {
+        judges_data: Dict[str, Any] = {
             "syntax_lint": {
                 "name": "Syntax & Konformität",
                 "prompt": SYSTEM_PROMPT_SYNTAX_LINT,

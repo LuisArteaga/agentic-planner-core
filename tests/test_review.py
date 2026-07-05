@@ -166,20 +166,22 @@ def test_review_api_error_resilience(mock_stdin, mock_urlopen, mock_env):
     user_details = json.dumps({"login": "reviewer-bot"})
     post_review_resp = json.dumps({"status": "success"})
 
+    call_count = [0]
+
     def urlopen_side_effect(req, *args, **kwargs):
         url = req.full_url if hasattr(req, "full_url") else req
         if "chat/completions" in url:
-            if urlopen_side_effect.call_count == 0:
-                urlopen_side_effect.call_count += 1
+            if call_count[0] == 0:
+                call_count[0] += 1
                 return make_mock_response(syntax_resp)
-            elif urlopen_side_effect.call_count == 1:
-                urlopen_side_effect.call_count += 1
+            elif call_count[0] == 1:
+                call_count[0] += 1
                 raise urllib.error.URLError("API Timeout or Rate Limit")
-            elif urlopen_side_effect.call_count == 2:
-                urlopen_side_effect.call_count += 1
+            elif call_count[0] == 2:
+                call_count[0] += 1
                 return make_mock_response(arch_resp)
-            elif urlopen_side_effect.call_count == 3:
-                urlopen_side_effect.call_count += 1
+            elif call_count[0] == 3:
+                call_count[0] += 1
                 return make_mock_response(sec_resp)
         elif "pulls/" in url and "reviews" not in url:
             return make_mock_response(pr_details)
@@ -188,7 +190,6 @@ def test_review_api_error_resilience(mock_stdin, mock_urlopen, mock_env):
         elif "reviews" in url:
             return make_mock_response(post_review_resp)
 
-    urlopen_side_effect.call_count = 0
     mock_urlopen.side_effect = urlopen_side_effect
 
     with pytest.raises(SystemExit) as excinfo:
