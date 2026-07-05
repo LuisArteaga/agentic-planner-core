@@ -118,3 +118,56 @@ def test_github_workspace_resolution(clean_env):
     assert "Path traversal detected" in str(exc.value)
 
     os.unlink(temp_file)
+
+
+def test_factory_config_invalid_json(clean_env):
+    os.environ["OPENROUTER_API_KEY"] = "test-key"
+    os.environ["GH_PAT"] = "test-pat"
+    os.environ["GITHUB_REPOSITORY"] = "test/repo"
+
+    sources_temp = create_temp_yaml({"strict": False})
+    # Create invalid json file
+    temp_json = tempfile.NamedTemporaryFile(
+        delete=False, suffix=".json", mode="w", encoding="utf-8"
+    )
+    temp_json.write("{invalid json: }")
+    temp_json.close()
+
+    with pytest.raises(ValueError) as exc:
+        AppConfig(sources_yaml_path=sources_temp, factory_json_path=temp_json.name)
+    assert "Invalid JSON format" in str(exc.value)
+
+    os.unlink(sources_temp)
+    os.unlink(temp_json.name)
+
+
+def test_factory_config_missing_file(clean_env):
+    os.environ["OPENROUTER_API_KEY"] = "test-key"
+    os.environ["GH_PAT"] = "test-pat"
+    os.environ["GITHUB_REPOSITORY"] = "test/repo"
+
+    sources_temp = create_temp_yaml({"strict": False})
+
+    with pytest.raises(FileNotFoundError) as exc:
+        AppConfig(
+            sources_yaml_path=sources_temp, factory_json_path="nonexistent_factory.json"
+        )
+    assert "Factory configuration file not found" in str(exc.value)
+
+    os.unlink(sources_temp)
+
+
+def test_resolve_model_config_overrides(clean_env):
+    # Test resolve_model_config with env overrides
+    os.environ["AGENT_MODEL"] = "env-agent-model"
+    os.environ["PR_SYNTAX_LINT_MODEL"] = "syntax-model-override"
+
+    from planner.config import resolve_model_config
+
+    cfg = resolve_model_config("syntax_lint")
+    assert cfg["model"] == "syntax-model-override"
+    assert cfg["routing"] is None  # routing is disabled for overrides
+
+    cfg_test = resolve_model_config("test_coverage")
+    assert cfg_test["model"] == "env-agent-model"
+    assert cfg_test["routing"] is None
