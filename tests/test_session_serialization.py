@@ -233,11 +233,11 @@ def test_console_loop_no_auto_save_when_omitted():
 
 def test_run_grill_resumes_session_via_menu(temp_workspace):
     config, workspace = temp_workspace
-    
+
     planner_core_root = Path(__file__).resolve().parents[1]
     sessions_dir = planner_core_root / ".planner" / "sessions" / "test-repo"
     sessions_dir.mkdir(parents=True, exist_ok=True)
-    
+
     session_file = sessions_dir / "grill_menu-resume.json"
     session_data = {
         "session_id": "grill_menu-resume",
@@ -245,22 +245,23 @@ def test_run_grill_resumes_session_via_menu(temp_workspace):
         "completed": False,
         "messages": [
             {"type": "human", "content": "Hello"},
-            {"type": "ai", "content": "Hi there", "tool_calls": []}
-        ]
+            {"type": "ai", "content": "Hi there", "tool_calls": []},
+        ],
     }
     with open(session_file, "w", encoding="utf-8") as f:
         json.dump(session_data, f)
-        
+
     try:
         mock_agent = MagicMock()
         with (
             patch("planner.cli_planning.setup_planning_agent", return_value=mock_agent),
-            patch("builtins.input", side_effect=["1"]), # Choose option 1 (resume)
-            patch("planner.cli_planning.run_interactive_console_loop") as mock_loop
+            patch("builtins.input", side_effect=["1"]),  # Choose option 1 (resume)
+            patch("planner.cli_planning.run_interactive_console_loop") as mock_loop,
         ):
             from planner.cli_planning import run_grill
+
             run_grill(config)
-            
+
             mock_loop.assert_called_once()
             call_kwargs = mock_loop.call_args[1]
             assert call_kwargs["session_id"] == "menu-resume"
@@ -278,31 +279,32 @@ def test_run_grill_resumes_session_via_menu(temp_workspace):
 
 def test_run_grill_new_session_via_menu(temp_workspace):
     config, workspace = temp_workspace
-    
+
     planner_core_root = Path(__file__).resolve().parents[1]
     sessions_dir = planner_core_root / ".planner" / "sessions" / "test-repo"
     sessions_dir.mkdir(parents=True, exist_ok=True)
-    
+
     session_file = sessions_dir / "grill_menu-new.json"
     session_data = {
         "session_id": "grill_menu-new",
         "last_modified": "2026-07-05T09:00:00.000000+00:00",
         "completed": False,
-        "messages": [{"type": "human", "content": "Hello"}]
+        "messages": [{"type": "human", "content": "Hello"}],
     }
     with open(session_file, "w", encoding="utf-8") as f:
         json.dump(session_data, f)
-        
+
     try:
         mock_agent = MagicMock()
         with (
             patch("planner.cli_planning.setup_planning_agent", return_value=mock_agent),
-            patch("builtins.input", side_effect=["2"]), # Choose option 2 (start new)
-            patch("planner.cli_planning.run_interactive_console_loop") as mock_loop
+            patch("builtins.input", side_effect=["2"]),  # Choose option 2 (start new)
+            patch("planner.cli_planning.run_interactive_console_loop") as mock_loop,
         ):
             from planner.cli_planning import run_grill
+
             run_grill(config)
-            
+
             mock_loop.assert_called_once()
             call_kwargs = mock_loop.call_args[1]
             assert call_kwargs.get("existing_messages") is None
@@ -319,30 +321,31 @@ def test_run_grill_new_session_via_menu(temp_workspace):
 
 def test_run_grill_direct_session_id_exists(temp_workspace):
     config, workspace = temp_workspace
-    
+
     planner_core_root = Path(__file__).resolve().parents[1]
     sessions_dir = planner_core_root / ".planner" / "sessions" / "test-repo"
     sessions_dir.mkdir(parents=True, exist_ok=True)
-    
+
     session_file = sessions_dir / "grill_direct-id.json"
     session_data = {
         "session_id": "grill_direct-id",
         "last_modified": "2026-07-05T09:00:00.000000+00:00",
         "completed": False,
-        "messages": [{"type": "human", "content": "Hello"}]
+        "messages": [{"type": "human", "content": "Hello"}],
     }
     with open(session_file, "w", encoding="utf-8") as f:
         json.dump(session_data, f)
-        
+
     try:
         mock_agent = MagicMock()
         with (
             patch("planner.cli_planning.setup_planning_agent", return_value=mock_agent),
-            patch("planner.cli_planning.run_interactive_console_loop") as mock_loop
+            patch("planner.cli_planning.run_interactive_console_loop") as mock_loop,
         ):
             from planner.cli_planning import run_grill
+
             run_grill(config, session_id="direct-id")
-            
+
             mock_loop.assert_called_once()
             call_kwargs = mock_loop.call_args[1]
             assert call_kwargs["session_id"] == "direct-id"
@@ -359,35 +362,37 @@ def test_run_grill_direct_session_id_exists(temp_workspace):
 
 def test_run_grill_direct_session_id_not_found(temp_workspace):
     config, workspace = temp_workspace
-    
+
     from planner.cli_planning import run_grill
+
     with pytest.raises(SystemExit) as excinfo:
         run_grill(config, session_id="nonexistent-id")
-    
+
     assert excinfo.value.code == 1
 
 
 def test_run_grill_invalid_json_is_ignored(temp_workspace):
     config, workspace = temp_workspace
-    
+
     planner_core_root = Path(__file__).resolve().parents[1]
     sessions_dir = planner_core_root / ".planner" / "sessions" / "test-repo"
     sessions_dir.mkdir(parents=True, exist_ok=True)
-    
+
     session_file = sessions_dir / "grill_corrupt.json"
     with open(session_file, "w", encoding="utf-8") as f:
         f.write("{invalid json")
-        
+
     try:
         mock_agent = MagicMock()
         with (
             patch("planner.cli_planning.setup_planning_agent", return_value=mock_agent),
             patch("sys.stderr.write") as mock_stderr,
-            patch("planner.cli_planning.run_interactive_console_loop") as mock_loop
+            patch("planner.cli_planning.run_interactive_console_loop") as mock_loop,
         ):
             from planner.cli_planning import run_grill
+
             run_grill(config)
-            
+
             mock_loop.assert_called_once()
             assert mock_loop.call_args[1].get("existing_messages") is None
             mock_stderr.assert_called()
@@ -404,7 +409,7 @@ def test_run_grill_invalid_json_is_ignored(temp_workspace):
 def test_console_loop_skip_agent_turn(temp_workspace):
     config, _ = temp_workspace
     session_id = "skip-test"
-    
+
     mock_agent = MagicMock()
     mock_agent.invoke.return_value = {
         "messages": [
@@ -412,24 +417,97 @@ def test_console_loop_skip_agent_turn(temp_workspace):
             AIMessage(content="Agent reply"),
         ]
     }
-    
+
     existing_messages = [
         HumanMessage(content="Hello"),
-        AIMessage(content="I am here to help.")
+        AIMessage(content="I am here to help."),
     ]
-    
+
     with (
         patch("builtins.input", side_effect=["exit"]) as mock_input,
-        patch("planner.cli_planning.save_grill_session") as mock_save,
-        patch("builtins.print") as mock_print,
+        patch("planner.cli_planning.save_grill_session"),
+        patch("builtins.print"),
     ):
         run_interactive_console_loop(
             mock_agent,
             "Grill Agent",
             config=config,
             session_id=session_id,
-            existing_messages=existing_messages
+            existing_messages=existing_messages,
         )
-        
+
         mock_agent.invoke.assert_not_called()
         mock_input.assert_called_once()
+
+
+def test_run_grill_telemetry_disabled(temp_workspace):
+    config, workspace = temp_workspace
+
+    mock_agent = MagicMock()
+    with (
+        patch("planner.cli_planning.setup_planning_agent", return_value=mock_agent),
+        patch("planner.cli_planning.run_interactive_console_loop") as mock_loop,
+        patch.dict("os.environ", {}, clear=True),
+        patch("scripts.telemetry.init_telemetry") as mock_init,
+        patch("scripts.telemetry.start_orchestrator_loop") as mock_start,
+        patch("scripts.telemetry.end_orchestrator_loop") as mock_end,
+    ):
+        from planner.cli_planning import run_grill
+
+        run_grill(config)
+
+        mock_init.assert_not_called()
+        mock_start.assert_not_called()
+        mock_end.assert_not_called()
+        mock_loop.assert_called_once()
+
+
+def test_run_grill_telemetry_enabled_success(temp_workspace):
+    config, workspace = temp_workspace
+
+    mock_agent = MagicMock()
+    env_keys = {"LANGFUSE_PUBLIC_KEY": "pk_test", "LANGFUSE_SECRET_KEY": "sk_test"}
+    with (
+        patch("planner.cli_planning.setup_planning_agent", return_value=mock_agent),
+        patch("planner.cli_planning.run_interactive_console_loop") as mock_loop,
+        patch.dict("os.environ", env_keys, clear=False),
+        patch("scripts.telemetry.init_telemetry") as mock_init,
+        patch("scripts.telemetry.start_orchestrator_loop") as mock_start,
+        patch("scripts.telemetry.end_orchestrator_loop") as mock_end,
+    ):
+        from planner.cli_planning import run_grill
+
+        run_grill(config)
+
+        mock_init.assert_called_once()
+        mock_start.assert_called_once()
+        # Verify that start_orchestrator_loop was called with a session ID
+        call_kwargs = mock_start.call_args[1]
+        assert "session_id" in call_kwargs
+        assert len(call_kwargs["session_id"]) > 0
+        mock_end.assert_called_once_with(exit_code=0)
+        mock_loop.assert_called_once()
+
+
+def test_run_grill_telemetry_enabled_failure(temp_workspace):
+    config, workspace = temp_workspace
+
+    env_keys = {"LANGFUSE_PUBLIC_KEY": "pk_test", "LANGFUSE_SECRET_KEY": "sk_test"}
+    with (
+        patch(
+            "planner.cli_planning.setup_planning_agent",
+            side_effect=Exception("Setup failed"),
+        ),
+        patch.dict("os.environ", env_keys, clear=False),
+        patch("scripts.telemetry.init_telemetry") as mock_init,
+        patch("scripts.telemetry.start_orchestrator_loop") as mock_start,
+        patch("scripts.telemetry.end_orchestrator_loop") as mock_end,
+    ):
+        from planner.cli_planning import run_grill
+
+        with pytest.raises(Exception, match="Setup failed"):
+            run_grill(config)
+
+        mock_init.assert_called_once()
+        mock_start.assert_called_once()
+        mock_end.assert_called_once_with(exit_code=1)

@@ -383,7 +383,9 @@ def run_grill(config: AppConfig, session_id: str = None):
 
     if session_id:
         if not sessions_dir_ok:
-            print("Error: Invalid session directory traversal detected.", file=sys.stderr)
+            print(
+                "Error: Invalid session directory traversal detected.", file=sys.stderr
+            )
             sys.exit(1)
 
         # Strip grill_ prefix if present to find it robustly
@@ -410,7 +412,10 @@ def run_grill(config: AppConfig, session_id: str = None):
                 pass
 
         if not target_file or not target_file.exists():
-            print(f"Error: Session file not found for session ID '{session_id}'.", file=sys.stderr)
+            print(
+                f"Error: Session file not found for session ID '{session_id}'.",
+                file=sys.stderr,
+            )
             sys.exit(1)
 
         try:
@@ -432,32 +437,49 @@ def run_grill(config: AppConfig, session_id: str = None):
             try:
                 with open(f_path, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                
+
                 # Check for mandatory keys
                 if "completed" not in data or "messages" not in data:
-                    print(f"Warning: Skipping invalid session file '{f_path.name}': Missing 'completed' or 'messages' fields.", file=sys.stderr)
+                    print(
+                        f"Warning: Skipping invalid session file '{f_path.name}': Missing 'completed' or 'messages' fields.",
+                        file=sys.stderr,
+                    )
                     continue
 
                 if not data["completed"]:
                     # extract clean session id
-                    clean_id = f_path.stem[6:] if f_path.stem.startswith("grill_") else f_path.stem
-                    incomplete_sessions.append({
-                        "id": clean_id,
-                        "last_modified": data.get("last_modified", ""),
-                        "messages": data["messages"]
-                    })
+                    clean_id = (
+                        f_path.stem[6:]
+                        if f_path.stem.startswith("grill_")
+                        else f_path.stem
+                    )
+                    incomplete_sessions.append(
+                        {
+                            "id": clean_id,
+                            "last_modified": data.get("last_modified", ""),
+                            "messages": data["messages"],
+                        }
+                    )
             except (json.JSONDecodeError, KeyError) as e:
-                print(f"Warning: Skipping corrupted session file '{f_path.name}': {e}", file=sys.stderr)
+                print(
+                    f"Warning: Skipping corrupted session file '{f_path.name}': {e}",
+                    file=sys.stderr,
+                )
                 continue
             except Exception as e:
-                print(f"Warning: Failed to read session file '{f_path.name}': {e}", file=sys.stderr)
+                print(
+                    f"Warning: Failed to read session file '{f_path.name}': {e}",
+                    file=sys.stderr,
+                )
                 continue
 
         # Sort by last_modified descending (newest first)
         incomplete_sessions.sort(key=lambda s: s["last_modified"], reverse=True)
 
         if incomplete_sessions:
-            print("\nEs wurden unvollständige Grill-Sitzungen gefunden. Möchtest du eine fortsetzen?")
+            print(
+                "\nEs wurden unvollständige Grill-Sitzungen gefunden. Möchtest du eine fortsetzen?"
+            )
             for idx, sess in enumerate(incomplete_sessions):
                 last_mod = sess["last_modified"]
                 # Format to a nicer timestamp if it parses
@@ -466,13 +488,17 @@ def run_grill(config: AppConfig, session_id: str = None):
                     last_mod_str = dt.strftime("%Y-%m-%d %H:%M:%S")
                 except Exception:
                     last_mod_str = last_mod
-                print(f"  {idx + 1}. grill_{sess['id']} fortsetzen (Zuletzt geändert: {last_mod_str})")
+                print(
+                    f"  {idx + 1}. grill_{sess['id']} fortsetzen (Zuletzt geändert: {last_mod_str})"
+                )
             print(f"  {len(incomplete_sessions) + 1}. Eine neue Sitzung starten")
 
             choice = None
             while True:
                 try:
-                    ans = input(f"Deine Auswahl (1-{len(incomplete_sessions) + 1}): ").strip()
+                    ans = input(
+                        f"Deine Auswahl (1-{len(incomplete_sessions) + 1}): "
+                    ).strip()
                     if not ans:
                         continue
                     val = int(ans)
@@ -480,7 +506,9 @@ def run_grill(config: AppConfig, session_id: str = None):
                         choice = val
                         break
                     else:
-                        print(f"Ungültige Auswahl. Bitte wähle eine Zahl zwischen 1 und {len(incomplete_sessions) + 1}.")
+                        print(
+                            f"Ungültige Auswahl. Bitte wähle eine Zahl zwischen 1 und {len(incomplete_sessions) + 1}."
+                        )
                 except ValueError:
                     print("Ungültige Eingabe. Bitte gib eine Zahl ein.")
 
@@ -490,45 +518,68 @@ def run_grill(config: AppConfig, session_id: str = None):
                 resumed_messages = deserialize_messages(chosen["messages"])
                 print(f"Setze Sitzung 'grill_{resumed_session_id}' fort...")
 
-    print("Connecting to OpenRouter...")
-    read_target_file, write_target_file = create_target_file_tools(config)
-    agent = setup_planning_agent(
-        config, "grill-with-docs", [read_target_file, write_target_file]
-    )
-
     if resumed_messages is not None:
-        run_interactive_console_loop(
-            agent,
-            "Grill Agent",
-            config=config,
-            session_id=resumed_session_id,
-            existing_messages=resumed_messages,
-        )
+        active_session_id = resumed_session_id
     else:
-        # Read initial PRD/CONTEXT files if they exist to bootstrap context
-        prd_path = Path(config.github_workspace) / "PRD.md"
-        context_path = Path(config.github_workspace) / "CONTEXT.md"
-
-        initial_user_message = "Let's start the design session."
-        if prd_path.exists():
-            with open(prd_path, "r", encoding="utf-8") as f:
-                initial_user_message += f"\n\nExisting PRD.md content:\n{f.read()}"
-        if context_path.exists():
-            with open(context_path, "r", encoding="utf-8") as f:
-                initial_user_message += (
-                    f"\n\nExisting CONTEXT.md glossary content:\n{f.read()}"
-                )
-
         # Generate timestamp-based session_id: e.g. "2026-07-05_07-40-00"
-        session_id = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        active_session_id = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
-        run_interactive_console_loop(
-            agent,
-            "Grill Agent",
-            initial_message=initial_user_message,
-            config=config,
-            session_id=session_id,
+    # Optional Langfuse tracing telemetry
+    use_telemetry = bool(
+        os.environ.get("LANGFUSE_PUBLIC_KEY") and os.environ.get("LANGFUSE_SECRET_KEY")
+    )
+    if use_telemetry:
+        from scripts.telemetry import init_telemetry, start_orchestrator_loop
+
+        init_telemetry()
+        start_orchestrator_loop(session_id=active_session_id)
+
+    exit_code = 0
+    try:
+        print("Connecting to OpenRouter...")
+        read_target_file, write_target_file = create_target_file_tools(config)
+        agent = setup_planning_agent(
+            config, "grill-with-docs", [read_target_file, write_target_file]
         )
+
+        if resumed_messages is not None:
+            run_interactive_console_loop(
+                agent,
+                "Grill Agent",
+                config=config,
+                session_id=active_session_id,
+                existing_messages=resumed_messages,
+            )
+        else:
+            # Read initial PRD/CONTEXT files if they exist to bootstrap context
+            prd_path = Path(config.github_workspace) / "PRD.md"
+            context_path = Path(config.github_workspace) / "CONTEXT.md"
+
+            initial_user_message = "Let's start the design session."
+            if prd_path.exists():
+                with open(prd_path, "r", encoding="utf-8") as f:
+                    initial_user_message += f"\n\nExisting PRD.md content:\n{f.read()}"
+            if context_path.exists():
+                with open(context_path, "r", encoding="utf-8") as f:
+                    initial_user_message += (
+                        f"\n\nExisting CONTEXT.md glossary content:\n{f.read()}"
+                    )
+
+            run_interactive_console_loop(
+                agent,
+                "Grill Agent",
+                initial_message=initial_user_message,
+                config=config,
+                session_id=active_session_id,
+            )
+    except BaseException as e:
+        exit_code = 1
+        raise e
+    finally:
+        if use_telemetry:
+            from scripts.telemetry import end_orchestrator_loop
+
+            end_orchestrator_loop(exit_code=exit_code)
 
 
 def run_verify(config: AppConfig):

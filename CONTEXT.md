@@ -55,6 +55,7 @@ Dieses Dokument definiert die fachliche Terminologie für diesen Kontext. Es dar
 * **Geschäftsregeln**:
   * Die Grill-Session wird lokal serialisiert und bei jedem Interaktionsschritt (nach jedem Agentenschritt und jeder Benutzereingabe) automatisch unter einem zeitstempelbasierten Dateinamen gesichert, um den Sitzungszustand abzusichern.
   * Eine unvollständige Grill-Session kann beim Start der CLI fortgesetzt werden. Hierbei wird der gespeicherte Nachrichtenverlauf deserialisiert und die Interaktion an der Stelle des letzten Beitrags wieder aufgenommen.
+  * Wenn `LANGFUSE_PUBLIC_KEY` und `LANGFUSE_SECRET_KEY` in der Umgebung vorhanden sind, wird die Grill-Session über OpenTelemetry an Langfuse übermittelt, wobei alle Spans mit der jeweiligen `session_id` verknüpft werden.
 * **Synonyme / Abzugrenzende Begriffe**: Nicht zu verwechseln mit der autonomen Verfeinerungsphase.
 
 ### Sitzungs-Serialisierung (Session Serialization)
