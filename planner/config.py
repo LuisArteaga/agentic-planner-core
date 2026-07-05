@@ -340,6 +340,8 @@ def get_model(phase_or_node: str) -> str:
 def get_llm(phase_or_node: str) -> "ChatOpenAI":
     cfg = resolve_model_config(phase_or_node)
     model_name = cfg["model"]
+    if model_name == "moonshotai/kimi-2.7-code":
+        model_name = "moonshotai/kimi-k2.7-code"
     routing = cfg["routing"]
     temperature = cfg["temperature"]
     options = cfg["options"]
