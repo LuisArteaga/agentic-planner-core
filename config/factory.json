@@ -1,22 +1,22 @@
 {
   "factory_version": "2026.2.0",
   "cli_orchestration": {
-    "grill": { "model": "z-ai/glm-5.2", "routing": ["Friendli", "Baseten", "Parasail", "Z.ai"], "temperature": 0.0 },
-    "verify": { "model": "z-ai/glm-5.2", "routing": ["Friendli", "Baseten", "Parasail", "Z.ai"], "temperature": 0.0 },
-    "draft": { "model": "deepseek/deepseek-v4-pro", "routing": ["DeepSeek", "Lepton", "Together"], "options": { "thinking": "max" }, "temperature": 0.0 }
+    "grill": { "model": "z-ai/glm-5.2", "routing": ["Friendli", "Parasail"], "temperature": 0.0 },
+    "verify": { "model": "z-ai/glm-5.2", "routing": ["Friendli", "Parasail"], "temperature": 0.0 },
+    "draft": { "model": "deepseek/deepseek-v4-pro", "routing": ["Together", "Novita", "DeepInfra", "SiliconFlow"], "options": { "thinking": "max" }, "temperature": 0.0 }
   },
   "refine_graph_nodes": {
-    "analyze_sources": { "model": "deepseek/deepseek-v4-flash", "routing": ["DeepSeek", "DeepInfra"], "options": { "thinking": "high" } },
-    "web_search": { "model": "deepseek/deepseek-v4-flash", "routing": ["DeepSeek", "DeepInfra"], "options": { "thinking": "none" } },
-    "propose_options": { "model": "deepseek/deepseek-v4-pro", "routing": ["DeepSeek", "Lepton", "Together"], "options": { "thinking": "max" } },
-    "evaluate_grade": { "model": "z-ai/glm-5.2", "routing": ["Friendli", "Baseten", "Parasail"], "temperature": 0.0 },
-    "apply_decision": { "model": "moonshotai/kimi-k2.7-code", "routing": ["Moonshot", "DeepInfra"], "temperature": 0.0 },
-    "publish_issue": { "model": "moonshotai/kimi-k2.7-code", "routing": ["Moonshot", "DeepInfra"], "temperature": 0.0 }
+    "analyze_sources": { "model": "deepseek/deepseek-v4-flash", "routing": ["Novita", "DeepInfra"], "options": { "thinking": "high" } },
+    "web_search": { "model": "deepseek/deepseek-v4-flash", "routing": ["Novita", "DeepInfra"], "options": { "thinking": "none" } },
+    "propose_options": { "model": "deepseek/deepseek-v4-pro", "routing": ["Together", "Novita", "DeepInfra", "SiliconFlow"], "options": { "thinking": "max" } },
+    "evaluate_grade": { "model": "z-ai/glm-5.2", "routing": ["Friendli", "Parasail"], "temperature": 0.0 },
+    "apply_decision": { "model": "moonshotai/kimi-k2.7-code", "routing": ["DeepInfra"], "temperature": 0.0 },
+    "publish_issue": { "model": "moonshotai/kimi-k2.7-code", "routing": ["DeepInfra"], "temperature": 0.0 }
   },
   "ci_cd_pr_judges": {
-    "syntax_lint": { "model": "moonshotai/kimi-k2.7-code", "routing": ["Moonshot", "DeepInfra"] },
-    "test_coverage": { "model": "moonshotai/kimi-k2.7-code", "routing": ["Moonshot", "DeepInfra"] },
-    "architecture": { "model": "z-ai/glm-5.2", "routing": ["Friendli", "Baseten"] },
-    "security": { "model": "deepseek/deepseek-v4-pro", "routing": ["DeepSeek", "Lepton"], "options": { "thinking": "max" } }
+    "syntax_lint": { "model": "moonshotai/kimi-k2.7-code", "routing": ["DeepInfra"] },
+    "test_coverage": { "model": "moonshotai/kimi-k2.7-code", "routing": ["DeepInfra"] },
+    "architecture": { "model": "z-ai/glm-5.2", "routing": ["Friendli", "Parasail"] },
+    "security": { "model": "deepseek/deepseek-v4-pro", "routing": ["Together", "Novita", "DeepInfra", "SiliconFlow"], "options": { "thinking": "max" } }
   }
 }
