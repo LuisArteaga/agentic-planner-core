@@ -295,34 +295,49 @@ def save_grill_session(
 def run_interactive_console_loop(
     agent,
     agent_name: str,
-    initial_message: str,
+    initial_message: str = None,
     config: AppConfig = None,
     session_id: str = None,
+    existing_messages: list[BaseMessage] = None,
 ):
     """Generic interactive console chat loop for planning agents."""
-    messages = [HumanMessage(content=initial_message)]
+    if existing_messages:
+        messages = list(existing_messages)
+    else:
+        messages = [HumanMessage(content=initial_message)]
 
-    # Initial save if auto-saving is active
-    if config and session_id:
+    # Initial save if auto-saving is active and this is a new session
+    if config and session_id and not existing_messages:
         save_grill_session(config, session_id, messages, completed=False)
 
     print(f"\n[{agent_name}]: Initializing session... (Type 'exit' or 'quit' to end)\n")
 
+    skip_agent = False
+    if existing_messages and len(existing_messages) > 0:
+        last_msg = existing_messages[-1]
+        if isinstance(last_msg, AIMessage):
+            # Print the agent's last reply so the user has context
+            print(f"\n[{agent_name}]: {last_msg.content}\n")
+            skip_agent = True
+
     while True:
         try:
-            result = agent.invoke({"messages": messages})
-            if isinstance(result, dict) and "messages" in result:
-                response_message = result["messages"][-1]
-                messages = list(result["messages"])
+            if not skip_agent:
+                result = agent.invoke({"messages": messages})
+                if isinstance(result, dict) and "messages" in result:
+                    response_message = result["messages"][-1]
+                    messages = list(result["messages"])
+                else:
+                    response_message = result
+                    messages.append(response_message)
+
+                print(f"\n[{agent_name}]: {response_message.content}\n")
+
+                # Save state after agent step
+                if config and session_id:
+                    save_grill_session(config, session_id, messages, completed=False)
             else:
-                response_message = result
-                messages.append(response_message)
-
-            print(f"\n[{agent_name}]: {response_message.content}\n")
-
-            # Save state after agent step
-            if config and session_id:
-                save_grill_session(config, session_id, messages, completed=False)
+                skip_agent = False
 
             user_input = input("[You]: ")
             if user_input.strip().lower() in ["exit", "quit"]:
@@ -346,41 +361,174 @@ def run_interactive_console_loop(
             break
 
 
-def run_grill(config: AppConfig):
+def run_grill(config: AppConfig, session_id: str = None):
     """Runs the interactive PRD/ADR design session (grill-with-docs) from planner-core."""
     print("=== Starting Phase 1: Interactive Design Session (grill-with-docs) ===")
     print(f"Target workspace: {config.github_workspace}")
-    print("Connecting to OpenRouter...")
 
+    repo_name = get_repo_name(config)
+    planner_core_root = Path(__file__).resolve().parents[1]
+    sessions_base = (planner_core_root / ".planner" / "sessions").resolve()
+    sessions_dir = (sessions_base / repo_name).resolve()
+
+    # Prevent directory traversal for sessions_dir
+    try:
+        sessions_dir.relative_to(sessions_base)
+        sessions_dir_ok = True
+    except ValueError:
+        sessions_dir_ok = False
+
+    resumed_messages = None
+    resumed_session_id = None
+
+    if session_id:
+        if not sessions_dir_ok:
+            print("Error: Invalid session directory traversal detected.", file=sys.stderr)
+            sys.exit(1)
+
+        # Strip grill_ prefix if present to find it robustly
+        clean_id = session_id[6:] if session_id.startswith("grill_") else session_id
+        filename1 = f"grill_{clean_id}.json"
+        filename2 = f"{session_id}.json"
+
+        target_file = None
+        f1 = (sessions_dir / filename1).resolve()
+        f2 = (sessions_dir / filename2).resolve()
+        try:
+            f1.relative_to(sessions_dir)
+            if f1.exists():
+                target_file = f1
+        except ValueError:
+            pass
+
+        if not target_file:
+            try:
+                f2.relative_to(sessions_dir)
+                if f2.exists():
+                    target_file = f2
+            except ValueError:
+                pass
+
+        if not target_file or not target_file.exists():
+            print(f"Error: Session file not found for session ID '{session_id}'.", file=sys.stderr)
+            sys.exit(1)
+
+        try:
+            with open(target_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            resumed_messages = deserialize_messages(data["messages"])
+            resumed_session_id = clean_id
+            print(f"Resuming session '{resumed_session_id}' directly...")
+        except Exception as e:
+            print(f"Error loading session '{session_id}': {e}", file=sys.stderr)
+            sys.exit(1)
+
+    elif sessions_dir_ok and sessions_dir.exists():
+        # Scan for existing grill session files
+        session_files = list(sessions_dir.glob("grill_*.json"))
+        incomplete_sessions = []
+
+        for f_path in session_files:
+            try:
+                with open(f_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                
+                # Check for mandatory keys
+                if "completed" not in data or "messages" not in data:
+                    print(f"Warning: Skipping invalid session file '{f_path.name}': Missing 'completed' or 'messages' fields.", file=sys.stderr)
+                    continue
+
+                if not data["completed"]:
+                    # extract clean session id
+                    clean_id = f_path.stem[6:] if f_path.stem.startswith("grill_") else f_path.stem
+                    incomplete_sessions.append({
+                        "id": clean_id,
+                        "last_modified": data.get("last_modified", ""),
+                        "messages": data["messages"]
+                    })
+            except (json.JSONDecodeError, KeyError) as e:
+                print(f"Warning: Skipping corrupted session file '{f_path.name}': {e}", file=sys.stderr)
+                continue
+            except Exception as e:
+                print(f"Warning: Failed to read session file '{f_path.name}': {e}", file=sys.stderr)
+                continue
+
+        # Sort by last_modified descending (newest first)
+        incomplete_sessions.sort(key=lambda s: s["last_modified"], reverse=True)
+
+        if incomplete_sessions:
+            print("\nEs wurden unvollständige Grill-Sitzungen gefunden. Möchtest du eine fortsetzen?")
+            for idx, sess in enumerate(incomplete_sessions):
+                last_mod = sess["last_modified"]
+                # Format to a nicer timestamp if it parses
+                try:
+                    dt = datetime.datetime.fromisoformat(last_mod)
+                    last_mod_str = dt.strftime("%Y-%m-%d %H:%M:%S")
+                except Exception:
+                    last_mod_str = last_mod
+                print(f"  {idx + 1}. grill_{sess['id']} fortsetzen (Zuletzt geändert: {last_mod_str})")
+            print(f"  {len(incomplete_sessions) + 1}. Eine neue Sitzung starten")
+
+            choice = None
+            while True:
+                try:
+                    ans = input(f"Deine Auswahl (1-{len(incomplete_sessions) + 1}): ").strip()
+                    if not ans:
+                        continue
+                    val = int(ans)
+                    if 1 <= val <= len(incomplete_sessions) + 1:
+                        choice = val
+                        break
+                    else:
+                        print(f"Ungültige Auswahl. Bitte wähle eine Zahl zwischen 1 und {len(incomplete_sessions) + 1}.")
+                except ValueError:
+                    print("Ungültige Eingabe. Bitte gib eine Zahl ein.")
+
+            if choice <= len(incomplete_sessions):
+                chosen = incomplete_sessions[choice - 1]
+                resumed_session_id = chosen["id"]
+                resumed_messages = deserialize_messages(chosen["messages"])
+                print(f"Setze Sitzung 'grill_{resumed_session_id}' fort...")
+
+    print("Connecting to OpenRouter...")
     read_target_file, write_target_file = create_target_file_tools(config)
     agent = setup_planning_agent(
         config, "grill-with-docs", [read_target_file, write_target_file]
     )
 
-    # Read initial PRD/CONTEXT files if they exist to bootstrap context
-    prd_path = Path(config.github_workspace) / "PRD.md"
-    context_path = Path(config.github_workspace) / "CONTEXT.md"
+    if resumed_messages is not None:
+        run_interactive_console_loop(
+            agent,
+            "Grill Agent",
+            config=config,
+            session_id=resumed_session_id,
+            existing_messages=resumed_messages,
+        )
+    else:
+        # Read initial PRD/CONTEXT files if they exist to bootstrap context
+        prd_path = Path(config.github_workspace) / "PRD.md"
+        context_path = Path(config.github_workspace) / "CONTEXT.md"
 
-    initial_user_message = "Let's start the design session."
-    if prd_path.exists():
-        with open(prd_path, "r", encoding="utf-8") as f:
-            initial_user_message += f"\n\nExisting PRD.md content:\n{f.read()}"
-    if context_path.exists():
-        with open(context_path, "r", encoding="utf-8") as f:
-            initial_user_message += (
-                f"\n\nExisting CONTEXT.md glossary content:\n{f.read()}"
-            )
+        initial_user_message = "Let's start the design session."
+        if prd_path.exists():
+            with open(prd_path, "r", encoding="utf-8") as f:
+                initial_user_message += f"\n\nExisting PRD.md content:\n{f.read()}"
+        if context_path.exists():
+            with open(context_path, "r", encoding="utf-8") as f:
+                initial_user_message += (
+                    f"\n\nExisting CONTEXT.md glossary content:\n{f.read()}"
+                )
 
-    # Generate timestamp-based session_id: e.g. "2026-07-05_07-40-00"
-    session_id = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        # Generate timestamp-based session_id: e.g. "2026-07-05_07-40-00"
+        session_id = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
-    run_interactive_console_loop(
-        agent,
-        "Grill Agent",
-        initial_user_message,
-        config=config,
-        session_id=session_id,
-    )
+        run_interactive_console_loop(
+            agent,
+            "Grill Agent",
+            initial_message=initial_user_message,
+            config=config,
+            session_id=session_id,
+        )
 
 
 def run_verify(config: AppConfig):

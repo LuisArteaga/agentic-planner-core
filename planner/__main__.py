@@ -29,9 +29,13 @@ def main():
     )
 
     # grill command
-    subparsers.add_parser(
+    grill_parser = subparsers.add_parser(
         "grill",
         help="Start the interactive PRD/ADR design session (grill-with-docs).",
+    )
+    grill_parser.add_argument(
+        "--session-id",
+        help="Explicit session ID to resume an existing session.",
     )
 
     # verify command
@@ -53,7 +57,7 @@ def main():
 
         config = AppConfig()
         if args.command == "grill":
-            run_grill(config)
+            run_grill(config, session_id=args.session_id)
         elif args.command == "verify":
             run_verify(config)
         elif args.command == "draft":
