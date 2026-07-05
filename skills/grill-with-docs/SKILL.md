@@ -11,6 +11,8 @@ Ask the questions one at a time, waiting for feedback on each question before co
 
 If a question can be answered by exploring the codebase, explore the codebase instead.
 
+Once all aspects of the plan have been fully clarified and a shared understanding is reached, you must invoke the `finish_session(summary: str)` tool to conclude the session. Do NOT offer any code implementation or file writing for code files at the end of the session.
+
 </what-to-do>
 
 <supporting-info>
