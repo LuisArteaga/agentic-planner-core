@@ -49,6 +49,8 @@ Variables inside `.env`:
 * `GITHUB_REPOSITORY`: The target repository in the format `owner/repo`
 * `GITHUB_WORKSPACE`: The absolute path to the target repository on your system (or a relative path, which will be resolved relative to `.workspaces/` in the project root)
 * `AGENT_MODEL`: (Optional) The model to use (e.g., `z-ai/glm-5.2`, defaults to `moonshotai/kimi-k2.7-code`)
+* `LANGFUSE_PUBLIC_KEY`: (Optional) Your Langfuse public key (enables telemetry/tracing for the grill session and refinement loop)
+* `LANGFUSE_SECRET_KEY`: (Optional) Your Langfuse secret key (enables telemetry/tracing for the grill session and refinement loop)
 
 Alternatively, you can export these environment variables directly in your shell:
 ```bash
@@ -57,6 +59,8 @@ export GH_PAT="your-github-token"
 export GITHUB_REPOSITORY="owner/target-repo"
 export GITHUB_WORKSPACE="/absolute/path/to/target-repo" # Or a relative path like "owner/target-repo"
 export AGENT_MODEL="z-ai/glm-5.2"
+export LANGFUSE_PUBLIC_KEY="your-langfuse-public-key"
+export LANGFUSE_SECRET_KEY="your-langfuse-secret-key"
 ```
 
 ---
