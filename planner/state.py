@@ -1,7 +1,7 @@
 from typing import TypedDict, List, Dict, Any
 
 
-class RefinementState(TypedDict):
+class RefinementState(TypedDict, total=False):
     """Isolated state schema for the Refinement Subgraph."""
 
     # Inputs passed from the master graph
@@ -34,7 +34,7 @@ class RefinementState(TypedDict):
     all_grades: List[Dict[str, Any]]
 
 
-class AgentState(TypedDict):
+class AgentState(TypedDict, total=False):
     """State schema for the Master Graph."""
 
     # List of all draft issues to be processed

@@ -47,7 +47,7 @@ def run_refinement_subgraph_node(state: AgentState) -> dict:
     with open(draft_path, "r", encoding="utf-8") as f:
         draft_content = f.read()
 
-    subgraph_input = {
+    subgraph_input: RefinementState = {
         "draft_issue_content": draft_content,
         "draft_issue_path": str(draft_path),
         "strict_mode": state.get("strict_mode", True),

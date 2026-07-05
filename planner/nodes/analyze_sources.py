@@ -59,6 +59,7 @@ def analyze_sources_node(state: RefinementState) -> Dict[str, Any]:
                 ]
             )
 
+            assert isinstance(response.content, str)
             result = json.loads(response.content)
             keywords = result.get("keywords", [])
             suggested_sources = result.get("suggested_sources", [])

@@ -53,7 +53,7 @@ def web_search_node(state: RefinementState) -> Dict[str, Any]:
         )
 
         # Build tool definition
-        tool_definition = {
+        tool_definition: dict[str, Any] = {
             "type": "openrouter:web_search",
             "parameters": {"engine": "auto"},
         }
@@ -113,6 +113,7 @@ def web_search_node(state: RefinementState) -> Dict[str, Any]:
                 completion_tokens = token_usage.get("completion_tokens", 0)
 
             # Extract and parse the JSON block of search results
+            assert isinstance(response.content, str)
             json_text = extract_json_block(response.content)
             parsed_results = json.loads(json_text)
 

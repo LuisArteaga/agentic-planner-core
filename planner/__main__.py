@@ -3,6 +3,7 @@ import glob
 import sys
 from pathlib import Path
 from planner.config import AppConfig
+from planner.state import AgentState
 from planner.refine_graph import graph
 from scripts.telemetry import (
     end_orchestrator_loop,
@@ -103,7 +104,7 @@ def main():
                         allowed_domains.append(f"github.com/{repo.strip().lower()}")
 
                 # 3. Build initial state
-                initial_state = {
+                initial_state: AgentState = {
                     "draft_issues": draft_files,
                     "current_issue_index": 0,
                     "strict_mode": config.sources.strict,
