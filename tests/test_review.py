@@ -155,6 +155,7 @@ def test_review_syntax_lint_fail_fast(
     assert "Q3" in body and "❌ FAIL" in body
 
 
+@patch("scripts.review.time.sleep")
 @patch("requests.Session.get")
 @patch("requests.Session.post")
 @patch("urllib.request.urlopen")
@@ -165,7 +166,7 @@ def test_review_syntax_lint_fail_fast(
     ),
 )
 def test_review_api_error_resilience(
-    mock_stdin, mock_urlopen, mock_post, mock_get, mock_env
+    mock_stdin, mock_urlopen, mock_post, mock_get, mock_sleep, mock_env
 ):
     syntax_resp = make_mock_openrouter_response(
         "<reasoning>Syntax OK</reasoning>\n<findings></findings>"

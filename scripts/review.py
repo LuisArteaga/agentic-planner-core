@@ -250,7 +250,8 @@ def call_llm_for_review(judge_key, system_prompt, diff, api_key):
         response_body = ""
         last_error = ""
 
-        for attempt in range(2):
+        max_attempts = 4
+        for attempt in range(max_attempts):
             try:
                 status, body = call_openrouter_api(
                     model,
@@ -275,9 +276,13 @@ def call_llm_for_review(judge_key, system_prompt, diff, api_key):
                 break
             except Exception as e:
                 last_error = str(e)
-                log(f"[WARN] OpenRouter attempt {attempt + 1} failed: {e}")
-                if attempt == 0:
-                    time.sleep(3)
+                log(
+                    f"[WARN] OpenRouter attempt {attempt + 1} of {max_attempts} failed: {e}"
+                )
+                if attempt < max_attempts - 1:
+                    sleep_time = (2**attempt) * 4
+                    log(f"[INFO] Sleeping {sleep_time} seconds before retrying...")
+                    time.sleep(sleep_time)
                     continue
                 raise Exception(
                     f"LLM review failed after retries. Last error: {last_error}"
