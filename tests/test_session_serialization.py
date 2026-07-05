@@ -26,6 +26,7 @@ class MockConfig:
         self.gh_pat = "test-gh-pat"
 
 
+# Pytest fixture to configure a temporary workspace for session serialization tests
 @pytest.fixture
 def temp_workspace(tmp_path):
     workspace = tmp_path / "workspace"
