@@ -141,6 +141,45 @@ def create_planning_tools(config: AppConfig):
     return save_draft_issue, save_teaching_checklist
 
 
+def create_grill_session_tools(config: AppConfig, session_id: str, session_state: dict):
+    """Tool factory to build session control tools bound to a specific AppConfig, session, and state."""
+
+    @tool
+    def finish_session(summary: str) -> str:
+        """Conclude the interactive design session with a summary of the decisions and results.
+
+        Prerequisites:
+        - 'PRD.md' must exist in the target repository.
+        """
+        try:
+            # Check if PRD.md exists in target repository
+            prd_file = get_target_path(config, "PRD.md")
+            if not prd_file.exists():
+                return (
+                    "Error: PRD.md does not exist in the target repository. "
+                    "Please create it first using write_target_file before finishing the session."
+                )
+
+            # Optional check for CONTEXT.md
+            context_file = get_target_path(config, "CONTEXT.md")
+            warning_msg = ""
+            if not context_file.exists():
+                warning_msg = " Warning: CONTEXT.md does not exist in target repository."
+                print(f"\n[Warning]: CONTEXT.md does not exist in the target repository.")
+
+            # Signal completion to the loop
+            session_state["completed"] = True
+            session_state["summary"] = summary
+
+            # Return success status
+            return f"Session successfully completed.{warning_msg}"
+
+        except Exception as e:
+            return f"Error concluding session: {e}"
+
+    return finish_session
+
+
 @tool
 def ask_question(
     question: str, options: list[str], is_multi_select: bool = False
@@ -299,6 +338,7 @@ def run_interactive_console_loop(
     config: AppConfig = None,
     session_id: str = None,
     existing_messages: list[BaseMessage] = None,
+    session_state: dict = None,
 ):
     """Generic interactive console chat loop for planning agents."""
     if existing_messages:
@@ -335,7 +375,16 @@ def run_interactive_console_loop(
 
                 # Save state after agent step
                 if config and session_id:
-                    save_grill_session(config, session_id, messages, completed=False)
+                    completed = bool(session_state and session_state.get("completed"))
+                    save_grill_session(config, session_id, messages, completed=completed)
+
+                if session_state and session_state.get("completed"):
+                    print("\n" + "=" * 80)
+                    print("                           GRILL SESSION SUMMARY")
+                    print("=" * 80)
+                    print(session_state.get("summary", ""))
+                    print("=" * 80 + "\n")
+                    break
             else:
                 skip_agent = False
 
@@ -534,12 +583,14 @@ def run_grill(config: AppConfig, session_id: str = None):
         init_telemetry()
         start_orchestrator_loop(session_id=active_session_id)
 
+    session_state = {"completed": False, "summary": None}
     exit_code = 0
     try:
         print("Connecting to OpenRouter...")
         read_target_file, write_target_file = create_target_file_tools(config)
+        finish_session = create_grill_session_tools(config, active_session_id, session_state)
         agent = setup_planning_agent(
-            config, "grill-with-docs", [read_target_file, write_target_file]
+            config, "grill-with-docs", [read_target_file, write_target_file, finish_session]
         )
 
         if resumed_messages is not None:
@@ -549,6 +600,7 @@ def run_grill(config: AppConfig, session_id: str = None):
                 config=config,
                 session_id=active_session_id,
                 existing_messages=resumed_messages,
+                session_state=session_state,
             )
         else:
             # Read initial PRD/CONTEXT files if they exist to bootstrap context
@@ -571,6 +623,7 @@ def run_grill(config: AppConfig, session_id: str = None):
                 initial_message=initial_user_message,
                 config=config,
                 session_id=active_session_id,
+                session_state=session_state,
             )
     except Exception as e:
         exit_code = 1

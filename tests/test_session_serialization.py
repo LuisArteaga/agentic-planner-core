@@ -511,3 +511,90 @@ def test_run_grill_telemetry_enabled_failure(temp_workspace):
         mock_init.assert_called_once()
         mock_start.assert_called_once()
         mock_end.assert_called_once_with(exit_code=1)
+
+
+def test_finish_session_missing_prd(temp_workspace):
+    config, workspace = temp_workspace
+    # PRD.md does not exist
+    session_state = {"completed": False, "summary": None}
+
+    from planner.cli_planning import create_grill_session_tools
+    finish_session = create_grill_session_tools(config, "test-sess", session_state)
+
+    result = finish_session.invoke("Test Summary")
+    assert "Error: PRD.md does not exist" in result
+    assert session_state["completed"] is False
+
+
+def test_finish_session_missing_context_warning(temp_workspace):
+    config, workspace = temp_workspace
+    # Create PRD.md
+    prd_file = workspace / "PRD.md"
+    prd_file.write_text("PRD Content")
+
+    session_state = {"completed": False, "summary": None}
+
+    from planner.cli_planning import create_grill_session_tools
+    finish_session = create_grill_session_tools(config, "test-sess", session_state)
+
+    result = finish_session.invoke("Test Summary")
+    assert "Session successfully completed." in result
+    assert "Warning: CONTEXT.md does not exist" in result
+    assert session_state["completed"] is True
+    assert session_state["summary"] == "Test Summary"
+
+
+def test_finish_session_success(temp_workspace):
+    config, workspace = temp_workspace
+    # Create PRD.md and CONTEXT.md
+    prd_file = workspace / "PRD.md"
+    prd_file.write_text("PRD Content")
+    context_file = workspace / "CONTEXT.md"
+    context_file.write_text("Glossary")
+
+    session_state = {"completed": False, "summary": None}
+
+    from planner.cli_planning import create_grill_session_tools
+    finish_session = create_grill_session_tools(config, "test-sess", session_state)
+
+    result = finish_session.invoke("Test Summary")
+    assert result == "Session successfully completed."
+    assert session_state["completed"] is True
+    assert session_state["summary"] == "Test Summary"
+
+
+def test_console_loop_exits_on_finish_session(temp_workspace):
+    config, _ = temp_workspace
+    session_state = {"completed": True, "summary": "Final Summary"}
+
+    mock_agent = MagicMock()
+    # Mock agent return to stop the turn
+    mock_agent.invoke.return_value = {
+        "messages": [
+            HumanMessage(content="Initial"),
+            AIMessage(content="Agent reply"),
+        ]
+    }
+
+    with (
+        patch("builtins.input") as mock_input,
+        patch("planner.cli_planning.save_grill_session") as mock_save,
+        patch("builtins.print"),
+    ):
+        run_interactive_console_loop(
+            mock_agent,
+            "Grill Agent",
+            "Initial",
+            config=config,
+            session_id="test-sess",
+            session_state=session_state,
+        )
+
+        # Verify that input was never called because it broke immediately when session_state["completed"] became True
+        mock_input.assert_not_called()
+
+        # Verify that save_grill_session was called with completed=True
+        assert mock_save.call_count >= 2
+        last_call_args = mock_save.call_args_list[-1]
+        assert last_call_args[1]["completed"] is True
+
