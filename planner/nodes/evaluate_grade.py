@@ -7,6 +7,7 @@ from langchain_core.messages import SystemMessage, HumanMessage
 from planner.state import RefinementState
 from langchain_openai import ChatOpenAI
 from scripts.telemetry import orchestrator_phase
+from planner.config import get_model
 
 logger = logging.getLogger("planner.nodes.evaluate_grade")
 
@@ -83,7 +84,7 @@ def evaluate_grade_node(state: RefinementState) -> Dict[str, Any]:
             combined_decisions += f"Existing agent AgDRs:\n{agdr_content}\n\n"
 
         # Instantiate Critic LLM
-        model_name = os.getenv("AGENT_MODEL", "google/gemini-2.5-flash")
+        model_name = get_model("evaluate_grade")
         model = ChatOpenAI(
             model=model_name,
             temperature=0.0,

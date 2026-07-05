@@ -6,6 +6,7 @@ from langchain_core.messages import SystemMessage, HumanMessage
 from planner.state import RefinementState
 from langchain_openai import ChatOpenAI
 from scripts.telemetry import orchestrator_phase
+from planner.config import get_model
 
 logger = logging.getLogger("planner.nodes.analyze_sources")
 
@@ -26,7 +27,7 @@ def analyze_sources_node(state: RefinementState) -> Dict[str, Any]:
             )
 
         # Instantiate LangChain ChatOpenAI client configured for OpenRouter
-        model_name = os.getenv("AGENT_MODEL", "google/gemini-2.5-flash")
+        model_name = get_model("analyze_sources")
         model = ChatOpenAI(
             model=model_name,
             temperature=0.0,

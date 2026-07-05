@@ -14,7 +14,7 @@ from langchain_core.messages import (
 )
 from langchain_core.tools import tool
 from deepagents import create_deep_agent
-from planner.config import AppConfig
+from planner.config import AppConfig, get_model
 
 
 def get_repo_name(config: AppConfig) -> str:
@@ -164,8 +164,12 @@ def create_grill_session_tools(config: AppConfig, session_id: str, session_state
             context_file = get_target_path(config, "CONTEXT.md")
             warning_msg = ""
             if not context_file.exists():
-                warning_msg = " Warning: CONTEXT.md does not exist in target repository."
-                print(f"\n[Warning]: CONTEXT.md does not exist in the target repository.")
+                warning_msg = (
+                    " Warning: CONTEXT.md does not exist in target repository."
+                )
+                print(
+                    "\n[Warning]: CONTEXT.md does not exist in the target repository."
+                )
 
             # Signal completion to the loop
             session_state["completed"] = True
@@ -208,10 +212,12 @@ def ask_question(
             print("Invalid input. Please enter a valid number.")
 
 
-def get_llm(config: AppConfig) -> ChatOpenAI:
+def get_llm(config: AppConfig, model_name: str = None) -> ChatOpenAI:
     """Instantiate ChatOpenAI configured for OpenRouter compatibility."""
+    if not model_name:
+        model_name = get_model("default")
     return ChatOpenAI(
-        model=os.getenv("AGENT_MODEL", "moonshotai/kimi-k2.7-code"),
+        model=model_name,
         temperature=0.0,
         openai_api_base="https://openrouter.ai/api/v1",
         openai_api_key=config.openrouter_api_key,
@@ -221,7 +227,16 @@ def get_llm(config: AppConfig) -> ChatOpenAI:
 
 def setup_planning_agent(config: AppConfig, skill_name: str, tools: list):
     """Factory to load skill prompts and construct the deep agent."""
-    llm = get_llm(config)
+    if skill_name == "grill-with-docs":
+        model_name = get_model("grill")
+    elif skill_name == "wise-teacher":
+        model_name = get_model("verify")
+    elif skill_name == "draft-issues":
+        model_name = get_model("draft")
+    else:
+        model_name = get_model("default")
+
+    llm = get_llm(config, model_name=model_name)
 
     planner_core_root = Path(__file__).resolve().parents[1]
     skill_path = planner_core_root / "skills" / skill_name / "SKILL.md"
@@ -376,7 +391,9 @@ def run_interactive_console_loop(
                 # Save state after agent step
                 if config and session_id:
                     completed = bool(session_state and session_state.get("completed"))
-                    save_grill_session(config, session_id, messages, completed=completed)
+                    save_grill_session(
+                        config, session_id, messages, completed=completed
+                    )
 
                 if session_state and session_state.get("completed"):
                     print("\n" + "=" * 80)
@@ -588,9 +605,13 @@ def run_grill(config: AppConfig, session_id: str = None):
     try:
         print("Connecting to OpenRouter...")
         read_target_file, write_target_file = create_target_file_tools(config)
-        finish_session = create_grill_session_tools(config, active_session_id, session_state)
+        finish_session = create_grill_session_tools(
+            config, active_session_id, session_state
+        )
         agent = setup_planning_agent(
-            config, "grill-with-docs", [read_target_file, write_target_file, finish_session]
+            config,
+            "grill-with-docs",
+            [read_target_file, write_target_file, finish_session],
         )
 
         if resumed_messages is not None:

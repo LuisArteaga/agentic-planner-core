@@ -133,3 +133,37 @@ class AppConfig:
         )
         session.mount("https://", HTTPAdapter(max_retries=retries))
         return session
+
+
+def get_model(phase_or_node: str) -> str:
+    """Resolves the LLM model name for a specific phase or refinement node with hierarchical fallbacks."""
+    load_env_file()
+
+    agent_model = os.getenv("AGENT_MODEL")
+    refine_model = os.getenv("REFINE_MODEL")
+
+    if phase_or_node == "grill":
+        return os.getenv("GRILL_MODEL") or agent_model or "z-ai/glm-5.2"
+    elif phase_or_node == "verify":
+        return os.getenv("VERIFY_MODEL") or agent_model or "z-ai/glm-5.2"
+    elif phase_or_node == "draft":
+        return os.getenv("DRAFT_MODEL") or agent_model or "deepseek/deepseek-v4-pro"
+
+    refine_defaults = {
+        "analyze_sources": "deepseek/deepseek-v4-pro",
+        "web_search": "deepseek/deepseek-v4-pro",
+        "propose_options": "deepseek/deepseek-v4-pro",
+        "evaluate_grade": "z-ai/glm-5.2",
+        "apply_decision": "moonshotai/kimi-k2.7-code",
+    }
+
+    if phase_or_node in refine_defaults:
+        env_var_name = f"REFINE_{phase_or_node.upper()}_MODEL"
+        return (
+            os.getenv(env_var_name)
+            or refine_model
+            or agent_model
+            or refine_defaults[phase_or_node]
+        )
+
+    return agent_model or "z-ai/glm-5.2"
