@@ -194,8 +194,6 @@ def call_openrouter_api(
     model, messages, api_key, routing=None, temperature=0.0, options=None
 ):
     """Performs HTTP request to OpenRouter chat completions API."""
-    if model == "moonshotai/kimi-2.7-code":
-        model = "moonshotai/kimi-k2.7-code"
     url = "https://openrouter.ai/api/v1/chat/completions"
 
     payload_dict = {

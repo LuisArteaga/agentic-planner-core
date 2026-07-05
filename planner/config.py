@@ -280,10 +280,10 @@ def resolve_model_config(phase_or_node: str) -> dict:
         "web_search": "deepseek/deepseek-v4-flash",
         "propose_options": "deepseek/deepseek-v4-pro",
         "evaluate_grade": "z-ai/glm-5.2",
-        "apply_decision": "moonshotai/kimi-2.7-code",
-        "publish_issue": "moonshotai/kimi-2.7-code",
-        "syntax_lint": "moonshotai/kimi-2.7-code",
-        "test_coverage": "moonshotai/kimi-2.7-code",
+        "apply_decision": "moonshotai/kimi-k2.7-code",
+        "publish_issue": "moonshotai/kimi-k2.7-code",
+        "syntax_lint": "moonshotai/kimi-k2.7-code",
+        "test_coverage": "moonshotai/kimi-k2.7-code",
         "architecture": "z-ai/glm-5.2",
         "security": "deepseek/deepseek-v4-pro",
     }
@@ -340,8 +340,6 @@ def get_model(phase_or_node: str) -> str:
 def get_llm(phase_or_node: str) -> "ChatOpenAI":
     cfg = resolve_model_config(phase_or_node)
     model_name = cfg["model"]
-    if model_name == "moonshotai/kimi-2.7-code":
-        model_name = "moonshotai/kimi-k2.7-code"
     routing = cfg["routing"]
     temperature = cfg["temperature"]
     options = cfg["options"]

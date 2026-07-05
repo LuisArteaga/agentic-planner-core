@@ -10,12 +10,12 @@
     "web_search": { "model": "deepseek/deepseek-v4-flash", "routing": ["DeepSeek", "DeepInfra"], "options": { "thinking": "none" } },
     "propose_options": { "model": "deepseek/deepseek-v4-pro", "routing": ["DeepSeek", "Lepton", "Together"], "options": { "thinking": "max" } },
     "evaluate_grade": { "model": "z-ai/glm-5.2", "routing": ["Friendli", "Baseten", "Parasail"], "temperature": 0.0 },
-    "apply_decision": { "model": "moonshotai/kimi-2.7-code", "routing": ["Moonshot", "DeepInfra"], "temperature": 0.0 },
-    "publish_issue": { "model": "moonshotai/kimi-2.7-code", "routing": ["Moonshot", "DeepInfra"], "temperature": 0.0 }
+    "apply_decision": { "model": "moonshotai/kimi-k2.7-code", "routing": ["Moonshot", "DeepInfra"], "temperature": 0.0 },
+    "publish_issue": { "model": "moonshotai/kimi-k2.7-code", "routing": ["Moonshot", "DeepInfra"], "temperature": 0.0 }
   },
   "ci_cd_pr_judges": {
-    "syntax_lint": { "model": "moonshotai/kimi-2.7-code", "routing": ["Moonshot", "DeepInfra"] },
-    "test_coverage": { "model": "moonshotai/kimi-2.7-code", "routing": ["Moonshot", "DeepInfra"] },
+    "syntax_lint": { "model": "moonshotai/kimi-k2.7-code", "routing": ["Moonshot", "DeepInfra"] },
+    "test_coverage": { "model": "moonshotai/kimi-k2.7-code", "routing": ["Moonshot", "DeepInfra"] },
     "architecture": { "model": "z-ai/glm-5.2", "routing": ["Friendli", "Baseten"] },
     "security": { "model": "deepseek/deepseek-v4-pro", "routing": ["DeepSeek", "Lepton"], "options": { "thinking": "max" } }
   }
