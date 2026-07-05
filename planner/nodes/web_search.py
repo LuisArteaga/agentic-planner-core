@@ -43,7 +43,12 @@ def web_search_node(state: RefinementState) -> Dict[str, Any]:
             return {"search_results": [], "status": "success"}
 
         # Instantiate LangChain ChatOpenAI client configured for OpenRouter
-        model_name = os.getenv("AGENT_MODEL", "google/gemini-2.5-flash")
+        model_name = (
+            os.getenv("REFINE_WEB_SEARCH_MODEL")
+            or os.getenv("REFINE_MODEL")
+            or os.getenv("AGENT_MODEL")
+            or "deepseek/deepseek-v4-pro"
+        )
         model = ChatOpenAI(
             model=model_name,
             temperature=0.0,

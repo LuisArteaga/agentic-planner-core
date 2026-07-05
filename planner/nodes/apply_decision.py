@@ -137,7 +137,12 @@ def apply_decision_node(state: RefinementState) -> Dict[str, Any]:
             combined_decisions += f"Existing agent AgDRs:\n{existing_agdrs}\n\n"
 
         # 2. Configure model
-        model_name = os.getenv("AGENT_MODEL", "google/gemini-2.5-flash")
+        model_name = (
+            os.getenv("REFINE_APPLY_DECISION_MODEL")
+            or os.getenv("REFINE_MODEL")
+            or os.getenv("AGENT_MODEL")
+            or "moonshotai/kimi-k2.7-code"
+        )
         model = ChatOpenAI(
             model=model_name,
             temperature=0.0,

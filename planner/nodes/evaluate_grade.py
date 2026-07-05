@@ -83,7 +83,12 @@ def evaluate_grade_node(state: RefinementState) -> Dict[str, Any]:
             combined_decisions += f"Existing agent AgDRs:\n{agdr_content}\n\n"
 
         # Instantiate Critic LLM
-        model_name = os.getenv("AGENT_MODEL", "google/gemini-2.5-flash")
+        model_name = (
+            os.getenv("REFINE_EVALUATE_GRADE_MODEL")
+            or os.getenv("REFINE_MODEL")
+            or os.getenv("AGENT_MODEL")
+            or "z-ai/glm-5.2"
+        )
         model = ChatOpenAI(
             model=model_name,
             temperature=0.0,

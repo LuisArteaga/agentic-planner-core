@@ -26,7 +26,12 @@ def analyze_sources_node(state: RefinementState) -> Dict[str, Any]:
             )
 
         # Instantiate LangChain ChatOpenAI client configured for OpenRouter
-        model_name = os.getenv("AGENT_MODEL", "google/gemini-2.5-flash")
+        model_name = (
+            os.getenv("REFINE_ANALYZE_SOURCES_MODEL")
+            or os.getenv("REFINE_MODEL")
+            or os.getenv("AGENT_MODEL")
+            or "deepseek/deepseek-v4-pro"
+        )
         model = ChatOpenAI(
             model=model_name,
             temperature=0.0,
