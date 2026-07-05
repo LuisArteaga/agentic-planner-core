@@ -1,0 +1,14 @@
+# .semgrepignore
+node_modules/
+vendor/
+dist/
+build/
+*.min.js
+package-lock.json
+yarn.lock
+poetry.lock
+.venv/
+.git/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/

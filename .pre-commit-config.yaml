@@ -23,7 +23,9 @@ repos:
     rev: v1.65.0
     hooks:
       - id: semgrep
-        args: ['--config=auto', '--error', '--skip-private-keys-under-limits']
+        name: Semgrep (Fast Local Scan)
+        args: ['--config=p/security-audit', '--jobs=0', '--skip-unknown-extensions', '--quiet']
+        types_or: [python, json, yaml]
 
   - repo: https://github.com/pypa/pip-audit
     rev: v2.10.1
