@@ -217,8 +217,7 @@ def serialize_messages(messages: list[BaseMessage]) -> list[dict]:
                     "name": msg.name,
                 }
             )
-        elif isinstance(msg, dict):
-            serialized.append(msg)
+
     return serialized
 
 
