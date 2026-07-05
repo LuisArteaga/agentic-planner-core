@@ -111,4 +111,10 @@ def test_github_workspace_resolution(clean_env):
     assert config.github_workspace == os.getcwd()
     assert os.environ["GITHUB_WORKSPACE"] == os.getcwd()
 
+    # 4. Test path traversal prevention for relative GITHUB_WORKSPACE
+    os.environ["GITHUB_WORKSPACE"] = "../../../etc"
+    with pytest.raises(ValueError) as exc:
+        AppConfig(sources_yaml_path=temp_file)
+    assert "Path traversal detected" in str(exc.value)
+
     os.unlink(temp_file)

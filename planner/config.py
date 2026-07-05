@@ -68,9 +68,16 @@ class AppConfig:
                 self.github_workspace = str(workspace_path.resolve())
             else:
                 project_root = pathlib.Path(__file__).resolve().parents[1]
-                self.github_workspace = str(
-                    (project_root / ".workspaces" / workspace_path).resolve()
-                )
+                workspaces_root = (project_root / ".workspaces").resolve()
+                resolved_path = (workspaces_root / workspace_path).resolve()
+                try:
+                    resolved_path.relative_to(workspaces_root)
+                except ValueError:
+                    raise ValueError(
+                        f"Path traversal detected: relative GITHUB_WORKSPACE path "
+                        f"'{workspace_env}' resolves outside the '.workspaces' directory."
+                    )
+                self.github_workspace = str(resolved_path)
         else:
             self.github_workspace = os.getcwd()
 
