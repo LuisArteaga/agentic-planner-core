@@ -572,7 +572,7 @@ def run_grill(config: AppConfig, session_id: str = None):
                 config=config,
                 session_id=active_session_id,
             )
-    except BaseException as e:
+    except Exception as e:
         exit_code = 1
         raise e
     finally:
