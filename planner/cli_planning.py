@@ -277,7 +277,7 @@ def serialize_messages(messages: list[BaseMessage]) -> list[dict]:
 
 def deserialize_messages(serialized: list[dict]) -> list[BaseMessage]:
     """Deserializes dictionaries back into LangChain messages."""
-    deserialized = []
+    deserialized: list[BaseMessage] = []
     for msg_dict in serialized:
         msg_type = msg_dict.get("type")
         content = msg_dict.get("content", "")
@@ -589,6 +589,8 @@ def run_grill(config: AppConfig, session_id: str = None):
     else:
         # Generate timestamp-based session_id: e.g. "2026-07-05_07-40-00"
         active_session_id = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+
+    assert active_session_id is not None
 
     # Optional Langfuse tracing telemetry
     use_telemetry = bool(

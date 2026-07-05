@@ -1,0 +1,7 @@
+# .github/CODEOWNERS
+*                      @LuisArteaga
+/planner/              @LuisArteaga
+/planner/nodes/        @LuisArteaga
+/.github/workflows/    @LuisArteaga
+/scripts/              @LuisArteaga
+/skills/               @LuisArteaga

@@ -207,7 +207,7 @@ def evaluate_grade_node(state: RefinementState) -> Dict[str, Any]:
             evaluations_list,
             key=lambda x: (
                 x["score"],
-                -len(x.get("reasoning", "")),
+                -len(str(x.get("reasoning", ""))),
             ),  # Secondary tie break: reasoning depth
             reverse=True,
         )

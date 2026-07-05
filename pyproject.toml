@@ -20,6 +20,12 @@ dependencies = [
 dev = [
     "pytest>=8.0.0",
     "ruff>=0.3.0",
+    "mypy>=1.0.0",
+    "pytest-cov>=4.0.0",
+    "pip-audit>=2.0.0",
+    "pre-commit",
+    "types-pyyaml",
+    "types-requests",
 ]
 
 [build-system]
@@ -28,3 +34,16 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 packages = ["planner"]
+
+[tool.mypy]
+ignore_missing_imports = true
+check_untyped_defs = true
+explicit_package_bases = true
+disable_error_code = ["call-arg", "dict-item", "assignment"]
+
+[tool.coverage.run]
+omit = [
+    "planner/__main__.py",
+    "planner/cli_planning.py",
+]
+

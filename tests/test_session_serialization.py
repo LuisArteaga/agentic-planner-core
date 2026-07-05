@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from langchain_core.messages import (
     AIMessage,
+    BaseMessage,
     HumanMessage,
     SystemMessage,
     ToolMessage,
@@ -36,7 +37,7 @@ def temp_workspace(tmp_path):
 
 
 def test_serialize_deserialize_roundtrip():
-    messages = [
+    messages: list[BaseMessage] = [
         HumanMessage(content="Hello there! Ümlaut and Emoji 🚀"),
         AIMessage(
             content="Hello Human",
@@ -80,14 +81,14 @@ def test_serialize_deserialize_roundtrip():
 
     assert isinstance(deserialized[1], AIMessage)
     assert deserialized[1].content == messages[1].content
-    assert deserialized[1].tool_calls == messages[1].tool_calls
+    assert deserialized[1].tool_calls == messages[1].tool_calls  # type: ignore[attr-defined]
 
     assert isinstance(deserialized[2], SystemMessage)
     assert deserialized[2].content == messages[2].content
 
     assert isinstance(deserialized[3], ToolMessage)
     assert deserialized[3].content == messages[3].content
-    assert deserialized[3].tool_call_id == messages[3].tool_call_id
+    assert deserialized[3].tool_call_id == messages[3].tool_call_id  # type: ignore[attr-defined]
     assert deserialized[3].name == messages[3].name
 
 
@@ -95,7 +96,9 @@ def test_save_grill_session(temp_workspace):
     config, workspace = temp_workspace
     session_id = "test-session-123"
 
-    messages = [HumanMessage(content="Test message with Unicode: Grüß Gott 🌟")]
+    messages: list[BaseMessage] = [
+        HumanMessage(content="Test message with Unicode: Grüß Gott 🌟")
+    ]
 
     # Save session
     save_grill_session(config, session_id, messages, completed=False)
@@ -135,7 +138,7 @@ def test_save_grill_session_directory_traversal_protection(temp_workspace):
     config, _ = temp_workspace
     # Attempt directory traversal in session_id
     session_id = "../../../traversal"
-    messages = [HumanMessage(content="Test")]
+    messages: list[BaseMessage] = [HumanMessage(content="Test")]
 
     # Should not throw but print error to stderr
     with patch("sys.stderr.write") as mock_stderr:
@@ -148,7 +151,7 @@ def test_save_grill_session_repo_name_traversal_protection(temp_workspace):
     config, _ = temp_workspace
     # Attempt directory traversal in repository name
     config.github_repository = "some-org/.."
-    messages = [HumanMessage(content="Test")]
+    messages: list[BaseMessage] = [HumanMessage(content="Test")]
 
     # Should not throw but print error to stderr
     with patch("sys.stderr.write") as mock_stderr:
@@ -159,7 +162,7 @@ def test_save_grill_session_repo_name_traversal_protection(temp_workspace):
 def test_save_grill_session_failure_caught(temp_workspace):
     config, _ = temp_workspace
     session_id = "test-fail"
-    messages = [HumanMessage(content="Test")]
+    messages: list[BaseMessage] = [HumanMessage(content="Test")]
 
     # Force a failure (e.g. mkdir raises exception)
     with patch("pathlib.Path.mkdir") as mock_mkdir:
@@ -223,8 +226,8 @@ def test_console_loop_no_auto_save_when_omitted():
             mock_agent,
             "Grill Agent",
             "Initial",
-            config=None,
-            session_id=None,
+            config=None,  # type: ignore[arg-type]
+            session_id=None,  # type: ignore[arg-type]
         )
 
         # save_grill_session should never be called when config/session_id are None
@@ -519,6 +522,7 @@ def test_finish_session_missing_prd(temp_workspace):
     session_state = {"completed": False, "summary": None}
 
     from planner.cli_planning import create_grill_session_tools
+
     finish_session = create_grill_session_tools(config, "test-sess", session_state)
 
     result = finish_session.invoke("Test Summary")
@@ -535,6 +539,7 @@ def test_finish_session_missing_context_warning(temp_workspace):
     session_state = {"completed": False, "summary": None}
 
     from planner.cli_planning import create_grill_session_tools
+
     finish_session = create_grill_session_tools(config, "test-sess", session_state)
 
     result = finish_session.invoke("Test Summary")
@@ -555,6 +560,7 @@ def test_finish_session_success(temp_workspace):
     session_state = {"completed": False, "summary": None}
 
     from planner.cli_planning import create_grill_session_tools
+
     finish_session = create_grill_session_tools(config, "test-sess", session_state)
 
     result = finish_session.invoke("Test Summary")
@@ -597,4 +603,3 @@ def test_console_loop_exits_on_finish_session(temp_workspace):
         assert mock_save.call_count >= 2
         last_call_args = mock_save.call_args_list[-1]
         assert last_call_args[1]["completed"] is True
-

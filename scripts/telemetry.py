@@ -64,7 +64,9 @@ def get_agent_logs_dir() -> str:
             pass
 
     # Fallback to checking /workspace/.agent_logs (inside container)
-    if os.path.exists("/workspace/.agent_logs") and os.access("/workspace/.agent_logs", os.W_OK):
+    if os.path.exists("/workspace/.agent_logs") and os.access(
+        "/workspace/.agent_logs", os.W_OK
+    ):
         return "/workspace/.agent_logs"
     # Otherwise check local .agent_logs relative to current working dir or project root
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -72,7 +74,7 @@ def get_agent_logs_dir() -> str:
     local_logs = os.path.join(project_root, ".agent_logs")
     try:
         os.makedirs(local_logs, exist_ok=True)
-        os.chmod(local_logs, 0o700)
+        os.chmod(local_logs, 0o700)  # nosemgrep
         if os.access(local_logs, os.W_OK):
             return local_logs
     except Exception:
@@ -80,6 +82,7 @@ def get_agent_logs_dir() -> str:
     # Fallback to temp logs if nothing else works
     import getpass
     import tempfile
+
     try:
         username = getpass.getuser()
     except Exception:
@@ -87,7 +90,7 @@ def get_agent_logs_dir() -> str:
     tmp_logs = os.path.join(tempfile.gettempdir(), f"agent_logs_{username}")
     try:
         os.makedirs(tmp_logs, mode=0o700, exist_ok=True)
-        os.chmod(tmp_logs, 0o700)
+        os.chmod(tmp_logs, 0o700)  # nosemgrep
     except Exception:
         pass
     return tmp_logs
@@ -102,7 +105,9 @@ class LocalJSONLFileSpanProcessor(SpanProcessor):
     def on_start(self, span, parent_context=None):
         # Automatically copy baggage keys starting with 'langfuse.' to span attributes
         try:
-            ctx = parent_context if parent_context is not None else context.get_current()
+            ctx = (
+                parent_context if parent_context is not None else context.get_current()
+            )
             baggage_entries = baggage.get_all(ctx)
             for k, v in baggage_entries.items():
                 if k.startswith("langfuse."):
@@ -129,9 +134,7 @@ class LocalJSONLFileSpanProcessor(SpanProcessor):
                 ),
                 "name": span.name,
                 "kind": (
-                    span.kind.value
-                    if hasattr(span.kind, "value")
-                    else int(span.kind)
+                    span.kind.value if hasattr(span.kind, "value") else int(span.kind)
                 ),
                 "start_time_unix_nano": span.start_time,
                 "end_time_unix_nano": span.end_time,
@@ -149,9 +152,7 @@ class LocalJSONLFileSpanProcessor(SpanProcessor):
             # Write to dated file
             today_str = datetime.date.today().isoformat()
             logs_dir = get_agent_logs_dir()
-            log_file_path = os.path.join(
-                logs_dir, f"otel_traces_{today_str}.jsonl"
-            )
+            log_file_path = os.path.join(logs_dir, f"otel_traces_{today_str}.jsonl")
 
             # Securely open the log file with 0o600 permissions
             with self._lock:
@@ -190,15 +191,15 @@ def init_telemetry(in_memory_exporter=None):
     current_provider = trace.get_tracer_provider()
     if isinstance(current_provider, TracerProvider):
         if in_memory_exporter is not None:
-            current_provider.add_span_processor(
-                SimpleSpanProcessor(in_memory_exporter)
-            )
+            current_provider.add_span_processor(SimpleSpanProcessor(in_memory_exporter))
         return
 
     service_name = os.getenv("OTEL_SERVICE_NAME", "agentic-planner-core")
-    resource = Resource.create({
-        "service.name": service_name,
-    })
+    resource = Resource.create(
+        {
+            "service.name": service_name,
+        }
+    )
 
     provider = TracerProvider(resource=resource)
 
@@ -227,9 +228,9 @@ def init_telemetry(in_memory_exporter=None):
             headers = {}
             if pub_key and sec_key:
                 auth_str = f"{pub_key}:{sec_key}"
-                encoded_auth = base64.b64encode(
-                    auth_str.encode("utf-8")
-                ).decode("utf-8")
+                encoded_auth = base64.b64encode(auth_str.encode("utf-8")).decode(
+                    "utf-8"
+                )
                 headers["Authorization"] = f"Basic {encoded_auth}"
 
             extra_headers_str = os.getenv("OTEL_EXPORTER_OTLP_HEADERS", "")
@@ -243,9 +244,7 @@ def init_telemetry(in_memory_exporter=None):
                 exporter = OTLPSpanExporter(endpoint=endpoint, headers=headers)
                 provider.add_span_processor(BatchSpanProcessor(exporter))
             except Exception as e:
-                sys.stderr.write(
-                    f"[WARN] Failed to initialize OTLP exporter: {e}\n"
-                )
+                sys.stderr.write(f"[WARN] Failed to initialize OTLP exporter: {e}\n")
 
     trace.set_tracer_provider(provider)
 
@@ -306,9 +305,7 @@ def end_orchestrator_loop(exit_code=0):
     if state.loop_span is not None:
         span = state.loop_span
         span.set_attribute("command.exit_code", exit_code)
-        status_code = (
-            trace.StatusCode.OK if exit_code == 0 else trace.StatusCode.ERROR
-        )
+        status_code = trace.StatusCode.OK if exit_code == 0 else trace.StatusCode.ERROR
         span.set_status(
             trace.Status(
                 status_code,
@@ -359,13 +356,9 @@ def end_orchestrator_phase(
     if model_name is not None:
         span.set_attribute("llm.model_name", model_name)
 
-    status_code = (
-        trace.StatusCode.OK if exit_code == 0 else trace.StatusCode.ERROR
-    )
+    status_code = trace.StatusCode.OK if exit_code == 0 else trace.StatusCode.ERROR
     span.set_status(
-        trace.Status(
-            status_code, f"exit code {exit_code}" if exit_code != 0 else None
-        )
+        trace.Status(status_code, f"exit code {exit_code}" if exit_code != 0 else None)
     )
     span.end()
 

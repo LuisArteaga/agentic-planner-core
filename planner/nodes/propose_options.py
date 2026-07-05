@@ -88,6 +88,7 @@ def propose_options_node(state: RefinementState) -> Dict[str, Any]:
                 completion_tokens = token_usage.get("completion_tokens", 0)
 
             # Extract and parse options list
+            assert isinstance(response.content, str)
             json_text = extract_json_block(response.content)
             parsed_options = json.loads(json_text)
 

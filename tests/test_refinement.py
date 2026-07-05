@@ -2,7 +2,7 @@ import os
 import unittest
 from unittest.mock import patch, MagicMock
 from langchain_core.messages import AIMessage
-from planner.state import RefinementState
+from planner.state import AgentState, RefinementState
 from planner.nodes.analyze_sources import analyze_sources_node
 from planner.nodes.web_search import web_search_node
 
@@ -209,7 +209,7 @@ class RefinementNodesTests(unittest.TestCase):
             file_1.write_text("Draft issue 1 content", encoding="utf-8")
             file_2.write_text("Draft issue 2 content", encoding="utf-8")
 
-            initial_state = {
+            initial_state: AgentState = {
                 "draft_issues": [str(file_1), str(file_2)],
                 "current_issue_index": 0,
                 "strict_mode": False,
