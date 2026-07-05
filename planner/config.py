@@ -60,8 +60,29 @@ class AppConfig:
         self.openrouter_api_key = os.environ.get("OPENROUTER_API_KEY")
         self.gh_pat = os.environ.get("GH_PAT") or os.environ.get("GH_TOKEN")
         self.github_repository = os.environ.get("GITHUB_REPOSITORY")
-        # Default workspace to current directory if not set
-        self.github_workspace = os.environ.get("GITHUB_WORKSPACE", os.getcwd())
+        # Resolve GITHUB_WORKSPACE
+        workspace_env = os.environ.get("GITHUB_WORKSPACE")
+        if workspace_env:
+            workspace_path = pathlib.Path(workspace_env)
+            if workspace_path.is_absolute():
+                self.github_workspace = str(workspace_path.resolve())
+            else:
+                project_root = pathlib.Path(__file__).resolve().parents[1]
+                workspaces_root = (project_root / ".workspaces").resolve()
+                resolved_path = (workspaces_root / workspace_path).resolve()
+                try:
+                    resolved_path.relative_to(workspaces_root)
+                except ValueError:
+                    raise ValueError(
+                        f"Path traversal detected: relative GITHUB_WORKSPACE path "
+                        f"'{workspace_env}' resolves outside the '.workspaces' directory."
+                    )
+                self.github_workspace = str(resolved_path)
+        else:
+            self.github_workspace = os.getcwd()
+
+        # Keep environment variable in sync for downstream modules/subprocesses
+        os.environ["GITHUB_WORKSPACE"] = self.github_workspace
 
         missing = []
         if not self.openrouter_api_key:

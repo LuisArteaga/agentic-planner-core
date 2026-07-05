@@ -226,3 +226,6 @@ __marimo__/
 # Antigravity Agents
 .agents/
 .teaching-checklist.md
+
+# Target Repos
+.workspaces/
