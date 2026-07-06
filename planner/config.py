@@ -289,8 +289,8 @@ def resolve_model_config(phase_or_node: str) -> dict:
         "evaluate_grade": ["Friendli", "Parasail"],
         "apply_decision": ["DeepInfra"],
         "publish_issue": ["DeepInfra"],
-        "syntax_lint": ["DeepInfra"],
-        "test_coverage": ["DeepInfra"],
+        "syntax_lint": ["DeepInfra", "Parasail", "Novita", "SiliconFlow", "Together"],
+        "test_coverage": ["DeepInfra", "Parasail", "Novita", "SiliconFlow", "Together"],
         "architecture": ["Friendli", "Parasail"],
         "security": ["Together", "Novita", "DeepInfra", "SiliconFlow"],
     }
