@@ -222,7 +222,7 @@ def call_openrouter_api(
         },
         method="POST",
     )
-    with urllib.request.urlopen(req, timeout=300) as response:  # nosemgrep
+    with urllib.request.urlopen(req, timeout=30) as response:  # nosemgrep
         return response.status, response.read().decode("utf-8")
 
 

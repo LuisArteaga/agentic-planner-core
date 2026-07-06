@@ -231,11 +231,11 @@ def test_factory_config_positive_parsing(clean_env):
         cfg_grade = resolve_model_config("evaluate_grade")
         assert cfg_grade["model"] == "z-ai/glm-5.2"  # default
         assert cfg_grade["routing"] == [
-            "Friendli",
-            "Parasail",
             "Together",
             "DeepInfra",
             "Fireworks",
+            "Parasail",
+            "Inceptron",
         ]  # default_routing fallback
         assert cfg_grade["temperature"] == 0.0  # default
 

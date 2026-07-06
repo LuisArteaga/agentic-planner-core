@@ -280,31 +280,42 @@ def resolve_model_config(phase_or_node: str) -> dict:
     # preventing OpenRouter from routing to providers with active guardrails
     # that return empty responses (e.g. kimi-k2.7-code via non-DeepInfra providers).
     default_routing = {
-        "grill": ["Friendli", "Parasail", "Together", "DeepInfra", "Fireworks"],
-        "verify": ["Friendli", "Parasail", "Together", "DeepInfra", "Fireworks"],
-        "draft": ["Together", "DeepInfra", "SiliconFlow", "Novita"],
-        "analyze_sources": ["Together", "DeepInfra", "Novita"],
-        "web_search": ["Together", "DeepInfra", "Novita"],
-        "propose_options": ["Together", "DeepInfra", "SiliconFlow", "Novita"],
-        "evaluate_grade": [
-            "Friendli",
-            "Parasail",
-            "Together",
+        "grill": ["Together", "DeepInfra", "Fireworks", "Parasail", "Inceptron"],
+        "verify": ["Together", "DeepInfra", "Fireworks", "Parasail", "Inceptron"],
+        "draft": ["DeepInfra", "SiliconFlow", "Novita", "Parasail", "DeepSeek"],
+        "analyze_sources": [
             "DeepInfra",
-            "Fireworks",
-        ],
-        "apply_decision": [
-            "DeepInfra",
-            "Together",
             "SiliconFlow",
             "Novita",
             "Parasail",
+            "DeepSeek",
         ],
-        "publish_issue": ["DeepInfra", "Together", "SiliconFlow", "Novita", "Parasail"],
-        "syntax_lint": ["DeepInfra", "Together", "SiliconFlow", "Novita", "Parasail"],
-        "test_coverage": ["DeepInfra", "Together", "SiliconFlow", "Novita", "Parasail"],
-        "architecture": ["Friendli", "Parasail", "Together", "DeepInfra", "Fireworks"],
-        "security": ["Together", "DeepInfra", "SiliconFlow", "Novita"],
+        "web_search": ["DeepInfra", "SiliconFlow", "Novita", "Parasail", "DeepSeek"],
+        "propose_options": [
+            "DeepInfra",
+            "SiliconFlow",
+            "Novita",
+            "Parasail",
+            "DeepSeek",
+        ],
+        "evaluate_grade": [
+            "Together",
+            "DeepInfra",
+            "Fireworks",
+            "Parasail",
+            "Inceptron",
+        ],
+        "apply_decision": [
+            "DeepInfra",
+            "Inceptron",
+            "Together",
+            "SiliconFlow",
+        ],
+        "publish_issue": ["DeepInfra", "Inceptron", "Together", "SiliconFlow"],
+        "syntax_lint": ["DeepInfra", "Inceptron", "Together", "SiliconFlow"],
+        "test_coverage": ["DeepInfra", "Inceptron", "Together", "SiliconFlow"],
+        "architecture": ["Together", "DeepInfra", "Fireworks", "Parasail", "Inceptron"],
+        "security": ["DeepInfra", "SiliconFlow", "Novita", "Parasail", "DeepSeek"],
     }
 
     default_options = {
