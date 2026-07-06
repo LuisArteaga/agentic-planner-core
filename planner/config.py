@@ -306,14 +306,14 @@ def resolve_model_config(phase_or_node: str) -> dict:
             "Inceptron",
         ],
         "apply_decision": [
-            "DeepInfra",
             "Inceptron",
             "Together",
             "SiliconFlow",
+            "MoonshotAI",
         ],
-        "publish_issue": ["DeepInfra", "Inceptron", "Together", "SiliconFlow"],
-        "syntax_lint": ["DeepInfra", "Inceptron", "Together", "SiliconFlow"],
-        "test_coverage": ["DeepInfra", "Inceptron", "Together", "SiliconFlow"],
+        "publish_issue": ["Inceptron", "Together", "SiliconFlow", "MoonshotAI"],
+        "syntax_lint": ["Inceptron", "Together", "SiliconFlow", "MoonshotAI"],
+        "test_coverage": ["Inceptron", "Together", "SiliconFlow", "MoonshotAI"],
         "architecture": ["Together", "DeepInfra", "Fireworks", "Parasail", "Inceptron"],
         "security": ["DeepInfra", "SiliconFlow", "Novita", "Parasail", "DeepSeek"],
     }
