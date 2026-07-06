@@ -140,7 +140,7 @@ SYSTEM_PROMPT_ARCH = (
     "=== 1. CRITERIA DEFINITION ===\n"
     "Check the diff for compliance against the documented architecture rules, ADRs, context conventions, and the following rules:\n"
     "- Q1 (Layer Boundaries & Drift): Check if layer boundaries are respected and architectural drift is avoided. For example, refinement subgraph state must be isolated and must not leak context to other issues.\n"
-    "- Q2 (Radical Simplicity / Lazy Coding): Check if the code is free of unnecessary abstractions, boilerplate, redundant interfaces, or scaffolding for future use (YAGNI). Prefer stdlib over new dependencies. Delete unused code.\n\n"
+    "- Q2 (Radical Simplicity / Lazy Coding): Check if the code is free of unnecessary abstractions, boilerplate, redundant interfaces, or scaffolding for future use (YAGNI). Prefer stdlib over new dependencies. Delete unused code. (Note: Due to system-level egress sanitization, the '@' symbol used for decorators, e.g. @pytest.fixture or @functools.lru_cache, might be received as '[EMAIL]'. Do NOT count '[EMAIL]' as an architectural compliance issue or syntax error; treat it as a valid '@' decorator symbol).\n\n"
     "=== 2. ARGUMENTATION STRUCTURE ===\n"
     "Output your thought process inside <reasoning>...</reasoning> tags.\n"
     "Output any compliance deviations inside <findings>...</findings> tags.\n\n"
@@ -192,7 +192,7 @@ def run_command(cmd, env=None):
 
 
 def call_openrouter_api(
-    model, messages, api_key, routing=None, temperature=0.0, options=None
+    model, messages, api_key, routing=None, temperature=0.0, options=None, timeout=30
 ):
     """Performs HTTP request to OpenRouter chat completions API."""
     url = "https://openrouter.ai/api/v1/chat/completions"
@@ -222,7 +222,7 @@ def call_openrouter_api(
         },
         method="POST",
     )
-    with urllib.request.urlopen(req, timeout=30) as response:  # nosemgrep
+    with urllib.request.urlopen(req, timeout=timeout) as response:  # nosemgrep
         return response.status, response.read().decode("utf-8")
 
 
@@ -251,6 +251,9 @@ def call_llm_for_review(judge_key, system_prompt, diff, api_key):
         response_body = ""
         last_error = ""
 
+        # Set timeout based on judge: 180s for architecture/security (reasoning models), 30s for syntax/test_coverage
+        timeout = 180 if judge_key in ["architecture", "security"] else 30
+
         max_attempts = 4
         for attempt in range(max_attempts):
             try:
@@ -261,6 +264,7 @@ def call_llm_for_review(judge_key, system_prompt, diff, api_key):
                     routing=routing,
                     temperature=temperature,
                     options=options,
+                    timeout=timeout,
                 )
 
                 # Pre-validate structure before considering it OK

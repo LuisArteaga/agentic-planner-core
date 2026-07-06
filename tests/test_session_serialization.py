@@ -694,11 +694,18 @@ def test_run_verify_resumes_session_via_menu(temp_workspace, verify_sessions_cle
             "planner.cli_planning.create_planning_tools",
             return_value=(MagicMock(), MagicMock()),
         ),
-        patch("planner.cli_planning.save_session"),
+        patch("planner.cli_planning.run_interactive_console_loop") as mock_loop,
     ):
         from planner.cli_planning import run_verify
 
         run_verify(config)
+
+        mock_loop.assert_called_once()
+        kwargs = mock_loop.call_args[1]
+        assert kwargs["session_id"] == "menu-resume"
+        assert len(kwargs["existing_messages"]) == 1
+        assert kwargs["existing_messages"][0].content == "Start verify"
+        assert kwargs["session_prefix"] == "verify"
 
 
 def test_run_verify_direct_session_id_exists(temp_workspace, verify_sessions_cleanup):
@@ -738,11 +745,18 @@ def test_run_verify_direct_session_id_exists(temp_workspace, verify_sessions_cle
             "planner.cli_planning.create_planning_tools",
             return_value=(MagicMock(), MagicMock()),
         ),
-        patch("planner.cli_planning.save_session"),
+        patch("planner.cli_planning.run_interactive_console_loop") as mock_loop,
     ):
         from planner.cli_planning import run_verify
 
         run_verify(config, session_id="direct-id")
+
+        mock_loop.assert_called_once()
+        kwargs = mock_loop.call_args[1]
+        assert kwargs["session_id"] == "direct-id"
+        assert len(kwargs["existing_messages"]) == 1
+        assert kwargs["existing_messages"][0].content == "Resuming directly"
+        assert kwargs["session_prefix"] == "verify"
 
 
 def test_run_verify_direct_session_id_not_found(
@@ -890,3 +904,122 @@ def test_run_verify_telemetry_enabled_failure(temp_workspace, verify_sessions_cl
             run_verify(config)
 
     mock_end.assert_called_once_with(exit_code=1)
+
+
+def test_console_logging_handler(capsys):
+    """ConsoleLoggingHandler methods should truncate output and log to console."""
+    from planner.cli_planning import ConsoleLoggingHandler
+
+    handler = ConsoleLoggingHandler()
+
+    # Test _truncate
+    long_text = "a" * 300
+    truncated = handler._truncate(long_text)
+    assert len(truncated) == 203
+    assert truncated.endswith("...")
+
+    short_text = "hello"
+    assert handler._truncate(short_text) == "hello"
+
+    # Test on_llm_start
+    serialized = {"kwargs": {"model": "test-model"}}
+    handler.on_llm_start(serialized, ["prompt"])
+    captured = capsys.readouterr()
+    assert "[Agent]: Thinking... (model: test-model)" in captured.out
+
+    # Test on_tool_start
+    serialized_tool = {"name": "test_tool"}
+    handler.on_tool_start(serialized_tool, "tool-input-text")
+    captured = capsys.readouterr()
+    assert "[Tool ▶]: test_tool(tool-input-text)" in captured.out
+
+    # Test on_tool_end
+    handler.on_tool_end("tool-output-text")
+    captured = capsys.readouterr()
+    assert "[Tool ◀]: tool-output-text" in captured.out
+
+
+def test_run_draft_success(temp_workspace):
+    """run_draft should initialize agent, read files, and trigger invoke with callback."""
+    config, workspace = temp_workspace
+    prd_file = workspace / "PRD.md"
+    prd_file.write_text("PRD content", encoding="utf-8")
+
+    mock_agent = MagicMock()
+    mock_agent.invoke.return_value = {
+        "messages": [AIMessage(content="Draft issues generated!")]
+    }
+
+    with (
+        patch("planner.cli_planning.setup_planning_agent", return_value=mock_agent),
+        patch(
+            "planner.cli_planning.create_target_file_tools",
+            return_value=(MagicMock(), MagicMock()),
+        ),
+        patch(
+            "planner.cli_planning.create_planning_tools",
+            return_value=(MagicMock(), MagicMock()),
+        ),
+        patch("planner.cli_planning.ConsoleLoggingHandler") as mock_handler_class,
+    ):
+        from planner.cli_planning import run_draft
+
+        run_draft(config)
+
+        mock_agent.invoke.assert_called_once()
+        args = mock_agent.invoke.call_args[0][0]
+        assert "messages" in args
+        assert "PRD Content" in args["messages"][0].content
+        mock_handler_class.assert_called_once()
+
+
+def test_main_refine_command():
+    """Main function should parse CLI options, verify rate limit quota, and run graph with callback."""
+    from planner.__main__ import main
+
+    mock_graph = MagicMock()
+    mock_graph.invoke.return_value = {"status": "success"}
+
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"resources": {"core": {"remaining": 100}}}
+
+    mock_session = MagicMock()
+    mock_session.get.return_value = mock_response
+
+    mock_config = MagicMock()
+    mock_config.github_repository = "owner/repo"
+    mock_config.sources.strict = False
+    mock_config.sources.domains = ["domain.com"]
+    mock_config.sources.repositories = ["owner/repo"]
+    mock_config.get_github_session.return_value = mock_session
+
+    with (
+        patch("sys.argv", ["planner", "refine", "--config", "test-sources.yaml"]),
+        patch("planner.__main__.AppConfig", return_value=mock_config),
+        patch("planner.__main__.graph", mock_graph),
+        patch("planner.__main__.init_telemetry") as mock_init,
+        patch("planner.__main__.start_orchestrator_loop") as mock_start,
+        patch("planner.__main__.end_orchestrator_loop") as mock_end,
+        patch("planner.__main__.glob.glob", return_value=["draft1.md"]),
+        patch("planner.__main__.Path.exists", return_value=True),
+        patch("logging.basicConfig"),
+    ):
+        main()
+
+        mock_init.assert_called_once()
+        mock_start.assert_called_once()
+        mock_end.assert_called_once_with(exit_code=0)
+        mock_graph.invoke.assert_called_once()
+
+
+def test_main_grill_command():
+    """Main function should parse grill command and delegate to run_grill."""
+    from planner.__main__ import main
+
+    with (
+        patch("sys.argv", ["planner", "grill", "--session-id", "test-session"]),
+        patch("planner.cli_planning.run_grill") as mock_run_grill,
+        patch("planner.__main__.AppConfig"),
+    ):
+        main()
+        mock_run_grill.assert_called_once()

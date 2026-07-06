@@ -494,11 +494,15 @@ def run_interactive_console_loop(
             break
 
 
-def run_grill(config: AppConfig, session_id: str = None):
-    """Runs the interactive PRD/ADR design session (grill-with-docs) from planner-core."""
-    print("=== Starting Phase 1: Interactive Design Session (grill-with-docs) ===")
-    print(f"Target workspace: {config.github_workspace}")
-
+def load_or_select_session(config: AppConfig, prefix: str, session_id: str = None):
+    """
+    Loads a specific session directly by session_id, or scans for incomplete sessions
+    with the given prefix and prompts the user to select one via an interactive menu.
+    Returns:
+        (resumed_messages, active_session_id)
+        - resumed_messages: List of deserialized messages or None if a new session should start.
+        - active_session_id: The ID of the session (resumed clean ID or a newly generated one).
+    """
     repo_name = get_repo_name(config)
     planner_core_root = Path(__file__).resolve().parents[1]
     sessions_base = (planner_core_root / ".planner" / "sessions").resolve()
@@ -513,6 +517,7 @@ def run_grill(config: AppConfig, session_id: str = None):
 
     resumed_messages = None
     resumed_session_id = None
+    prefix_with_under = f"{prefix}_"
 
     if session_id:
         if not sessions_dir_ok:
@@ -521,9 +526,13 @@ def run_grill(config: AppConfig, session_id: str = None):
             )
             sys.exit(1)
 
-        # Strip grill_ prefix if present to find it robustly
-        clean_id = session_id[6:] if session_id.startswith("grill_") else session_id
-        filename1 = f"grill_{clean_id}.json"
+        # Strip prefix if present to find it robustly
+        clean_id = (
+            session_id[len(prefix_with_under) :]
+            if session_id.startswith(prefix_with_under)
+            else session_id
+        )
+        filename1 = f"{prefix_with_under}{clean_id}.json"
         filename2 = f"{session_id}.json"
 
         target_file = None
@@ -556,14 +565,16 @@ def run_grill(config: AppConfig, session_id: str = None):
                 data = json.load(f)
             resumed_messages = deserialize_messages(data["messages"])
             resumed_session_id = clean_id
-            print(f"Resuming session '{resumed_session_id}' directly...")
+            print(
+                f"Resuming session '{prefix_with_under}{resumed_session_id}' directly..."
+            )
         except Exception as e:
             print(f"Error loading session '{session_id}': {e}", file=sys.stderr)
             sys.exit(1)
 
     elif sessions_dir_ok and sessions_dir.exists():
-        # Scan for existing grill session files
-        session_files = list(sessions_dir.glob("grill_*.json"))
+        # Scan for existing session files with prefix
+        session_files = list(sessions_dir.glob(f"{prefix_with_under}*.json"))
         incomplete_sessions = []
 
         for f_path in session_files:
@@ -580,10 +591,9 @@ def run_grill(config: AppConfig, session_id: str = None):
                     continue
 
                 if not data["completed"]:
-                    # extract clean session id
                     clean_id = (
-                        f_path.stem[6:]
-                        if f_path.stem.startswith("grill_")
+                        f_path.stem[len(prefix_with_under) :]
+                        if f_path.stem.startswith(prefix_with_under)
                         else f_path.stem
                     )
                     incomplete_sessions.append(
@@ -611,18 +621,17 @@ def run_grill(config: AppConfig, session_id: str = None):
 
         if incomplete_sessions:
             print(
-                "\nEs wurden unvollständige Grill-Sitzungen gefunden. Möchtest du eine fortsetzen?"
+                f"\nEs wurden unvollständige {prefix.capitalize()}-Sitzungen gefunden. Möchtest du eine fortsetzen?"
             )
             for idx, sess in enumerate(incomplete_sessions):
                 last_mod = sess["last_modified"]
-                # Format to a nicer timestamp if it parses
                 try:
                     dt = datetime.datetime.fromisoformat(last_mod)
                     last_mod_str = dt.strftime("%Y-%m-%d %H:%M:%S")
                 except Exception:
                     last_mod_str = last_mod
                 print(
-                    f"  {idx + 1}. grill_{sess['id']} fortsetzen (Zuletzt geändert: {last_mod_str})"
+                    f"  {idx + 1}. {prefix_with_under}{sess['id']} fortsetzen (Zuletzt geändert: {last_mod_str})"
                 )
             print(f"  {len(incomplete_sessions) + 1}. Eine neue Sitzung starten")
 
@@ -649,13 +658,26 @@ def run_grill(config: AppConfig, session_id: str = None):
                 chosen = incomplete_sessions[choice - 1]
                 resumed_session_id = chosen["id"]
                 resumed_messages = deserialize_messages(chosen["messages"])
-                print(f"Setze Sitzung 'grill_{resumed_session_id}' fort...")
+                print(
+                    f"Setze Sitzung '{prefix_with_under}{resumed_session_id}' fort..."
+                )
 
     if resumed_messages is not None:
         active_session_id = resumed_session_id
     else:
-        # Generate timestamp-based session_id: e.g. "2026-07-05_07-40-00"
         active_session_id = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+
+    return resumed_messages, active_session_id
+
+
+def run_grill(config: AppConfig, session_id: str = None):
+    """Runs the interactive PRD/ADR design session (grill-with-docs) from planner-core."""
+    print("=== Starting Phase 1: Interactive Design Session (grill-with-docs) ===")
+    print(f"Target workspace: {config.github_workspace}")
+
+    resumed_messages, active_session_id = load_or_select_session(
+        config, "grill", session_id
+    )
 
     assert active_session_id is not None
 
@@ -726,159 +748,9 @@ def run_verify(config: AppConfig, session_id: str = None):
     print("=== Starting Phase 1b: Learning Verification Session (wise-teacher) ===")
     print(f"Target workspace: {config.github_workspace}")
 
-    repo_name = get_repo_name(config)
-    planner_core_root = Path(__file__).resolve().parents[1]
-    sessions_base = (planner_core_root / ".planner" / "sessions").resolve()
-    sessions_dir = (sessions_base / repo_name).resolve()
-
-    # Prevent directory traversal for sessions_dir
-    try:
-        sessions_dir.relative_to(sessions_base)
-        sessions_dir_ok = True
-    except ValueError:
-        sessions_dir_ok = False
-
-    resumed_messages = None
-    resumed_session_id = None
-
-    if session_id:
-        if not sessions_dir_ok:
-            print(
-                "Error: Invalid session directory traversal detected.", file=sys.stderr
-            )
-            sys.exit(1)
-
-        # Strip verify_ prefix if present to find it robustly
-        clean_id = session_id[7:] if session_id.startswith("verify_") else session_id
-        filename1 = f"verify_{clean_id}.json"
-        filename2 = f"{session_id}.json"
-
-        target_file = None
-        f1 = (sessions_dir / filename1).resolve()
-        f2 = (sessions_dir / filename2).resolve()
-        try:
-            f1.relative_to(sessions_dir)
-            if f1.exists():
-                target_file = f1
-        except ValueError:
-            pass
-
-        if not target_file:
-            try:
-                f2.relative_to(sessions_dir)
-                if f2.exists():
-                    target_file = f2
-            except ValueError:
-                pass
-
-        if not target_file or not target_file.exists():
-            print(
-                f"Error: Session file not found for session ID '{session_id}'.",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-
-        try:
-            with open(target_file, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            resumed_messages = deserialize_messages(data["messages"])
-            resumed_session_id = clean_id
-            print(f"Resuming session 'verify_{resumed_session_id}' directly...")
-        except Exception as e:
-            print(f"Error loading session '{session_id}': {e}", file=sys.stderr)
-            sys.exit(1)
-
-    elif sessions_dir_ok and sessions_dir.exists():
-        # Scan for existing verify session files
-        session_files = list(sessions_dir.glob("verify_*.json"))
-        incomplete_sessions = []
-
-        for f_path in session_files:
-            try:
-                with open(f_path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-
-                if "completed" not in data or "messages" not in data:
-                    print(
-                        f"Warning: Skipping invalid session file '{f_path.name}': Missing 'completed' or 'messages' fields.",
-                        file=sys.stderr,
-                    )
-                    continue
-
-                if not data["completed"]:
-                    clean_id = (
-                        f_path.stem[7:]
-                        if f_path.stem.startswith("verify_")
-                        else f_path.stem
-                    )
-                    incomplete_sessions.append(
-                        {
-                            "id": clean_id,
-                            "last_modified": data.get("last_modified", ""),
-                            "messages": data["messages"],
-                        }
-                    )
-            except (json.JSONDecodeError, KeyError) as e:
-                print(
-                    f"Warning: Skipping corrupted session file '{f_path.name}': {e}",
-                    file=sys.stderr,
-                )
-                continue
-            except Exception as e:
-                print(
-                    f"Warning: Failed to read session file '{f_path.name}': {e}",
-                    file=sys.stderr,
-                )
-                continue
-
-        # Sort by last_modified descending (newest first)
-        incomplete_sessions.sort(key=lambda s: s["last_modified"], reverse=True)
-
-        if incomplete_sessions:
-            print(
-                "\nEs wurden unvollständige Verify-Sitzungen gefunden. Möchtest du eine fortsetzen?"
-            )
-            for idx, sess in enumerate(incomplete_sessions):
-                last_mod = sess["last_modified"]
-                try:
-                    dt = datetime.datetime.fromisoformat(last_mod)
-                    last_mod_str = dt.strftime("%Y-%m-%d %H:%M:%S")
-                except Exception:
-                    last_mod_str = last_mod
-                print(
-                    f"  {idx + 1}. verify_{sess['id']} fortsetzen (Zuletzt geändert: {last_mod_str})"
-                )
-            print(f"  {len(incomplete_sessions) + 1}. Eine neue Sitzung starten")
-
-            choice = None
-            while True:
-                try:
-                    ans = input(
-                        f"Deine Auswahl (1-{len(incomplete_sessions) + 1}): "
-                    ).strip()
-                    if not ans:
-                        continue
-                    val = int(ans)
-                    if 1 <= val <= len(incomplete_sessions) + 1:
-                        choice = val
-                        break
-                    else:
-                        print(
-                            f"Ungültige Auswahl. Bitte wähle eine Zahl zwischen 1 und {len(incomplete_sessions) + 1}."
-                        )
-                except ValueError:
-                    print("Ungültige Eingabe. Bitte gib eine Zahl ein.")
-
-            if choice <= len(incomplete_sessions):
-                chosen = incomplete_sessions[choice - 1]
-                resumed_session_id = chosen["id"]
-                resumed_messages = deserialize_messages(chosen["messages"])
-                print(f"Setze Sitzung 'verify_{resumed_session_id}' fort...")
-
-    if resumed_messages is not None:
-        active_session_id = resumed_session_id
-    else:
-        active_session_id = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    resumed_messages, active_session_id = load_or_select_session(
+        config, "verify", session_id
+    )
 
     assert active_session_id is not None
 
