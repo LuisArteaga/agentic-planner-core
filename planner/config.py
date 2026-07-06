@@ -280,19 +280,31 @@ def resolve_model_config(phase_or_node: str) -> dict:
     # preventing OpenRouter from routing to providers with active guardrails
     # that return empty responses (e.g. kimi-k2.7-code via non-DeepInfra providers).
     default_routing = {
-        "grill": ["Friendli", "Parasail"],
-        "verify": ["Friendli", "Parasail"],
-        "draft": ["Together", "Novita", "DeepInfra", "SiliconFlow"],
-        "analyze_sources": ["Novita", "DeepInfra"],
-        "web_search": ["Novita", "DeepInfra"],
-        "propose_options": ["Together", "Novita", "DeepInfra", "SiliconFlow"],
-        "evaluate_grade": ["Friendli", "Parasail"],
-        "apply_decision": ["DeepInfra"],
-        "publish_issue": ["DeepInfra"],
-        "syntax_lint": ["DeepInfra", "Parasail", "Novita", "SiliconFlow", "Together"],
-        "test_coverage": ["DeepInfra", "Parasail", "Novita", "SiliconFlow", "Together"],
-        "architecture": ["Friendli", "Parasail"],
-        "security": ["Together", "Novita", "DeepInfra", "SiliconFlow"],
+        "grill": ["Friendli", "Parasail", "Together", "DeepInfra", "Fireworks"],
+        "verify": ["Friendli", "Parasail", "Together", "DeepInfra", "Fireworks"],
+        "draft": ["Together", "DeepInfra", "SiliconFlow", "Novita"],
+        "analyze_sources": ["Together", "DeepInfra", "Novita"],
+        "web_search": ["Together", "DeepInfra", "Novita"],
+        "propose_options": ["Together", "DeepInfra", "SiliconFlow", "Novita"],
+        "evaluate_grade": [
+            "Friendli",
+            "Parasail",
+            "Together",
+            "DeepInfra",
+            "Fireworks",
+        ],
+        "apply_decision": [
+            "DeepInfra",
+            "Together",
+            "SiliconFlow",
+            "Novita",
+            "Parasail",
+        ],
+        "publish_issue": ["DeepInfra", "Together", "SiliconFlow", "Novita", "Parasail"],
+        "syntax_lint": ["DeepInfra", "Together", "SiliconFlow", "Novita", "Parasail"],
+        "test_coverage": ["DeepInfra", "Together", "SiliconFlow", "Novita", "Parasail"],
+        "architecture": ["Friendli", "Parasail", "Together", "DeepInfra", "Fireworks"],
+        "security": ["Together", "DeepInfra", "SiliconFlow", "Novita"],
     }
 
     default_options = {

@@ -233,6 +233,9 @@ def test_factory_config_positive_parsing(clean_env):
         assert cfg_grade["routing"] == [
             "Friendli",
             "Parasail",
+            "Together",
+            "DeepInfra",
+            "Fireworks",
         ]  # default_routing fallback
         assert cfg_grade["temperature"] == 0.0  # default
 
