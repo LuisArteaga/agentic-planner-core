@@ -275,6 +275,26 @@ def resolve_model_config(phase_or_node: str) -> dict:
         "security": "deepseek/deepseek-v4-pro",
     }
 
+    # Provider routing fallbacks — mirror of config/factory.json.
+    # Ensures CI always uses known-good providers even without factory.json,
+    # preventing OpenRouter from routing to providers with active guardrails
+    # that return empty responses (e.g. kimi-k2.7-code via non-DeepInfra providers).
+    default_routing = {
+        "grill": ["Friendli", "Parasail"],
+        "verify": ["Friendli", "Parasail"],
+        "draft": ["Together", "Novita", "DeepInfra", "SiliconFlow"],
+        "analyze_sources": ["Novita", "DeepInfra"],
+        "web_search": ["Novita", "DeepInfra"],
+        "propose_options": ["Together", "Novita", "DeepInfra", "SiliconFlow"],
+        "evaluate_grade": ["Friendli", "Parasail"],
+        "apply_decision": ["DeepInfra"],
+        "publish_issue": ["DeepInfra"],
+        "syntax_lint": ["DeepInfra"],
+        "test_coverage": ["DeepInfra"],
+        "architecture": ["Friendli", "Parasail"],
+        "security": ["Together", "Novita", "DeepInfra", "SiliconFlow"],
+    }
+
     default_options = {
         "draft": {"thinking": "max"},
         "analyze_sources": {"thinking": "high"},
@@ -307,7 +327,7 @@ def resolve_model_config(phase_or_node: str) -> dict:
             options = factory_cfg.options
         else:
             model = default_models.get(phase_or_node, "z-ai/glm-5.2")
-            routing = None
+            routing = default_routing.get(phase_or_node)
             temperature = 0.0
             options = default_options.get(phase_or_node)
 

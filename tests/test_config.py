@@ -230,7 +230,10 @@ def test_factory_config_positive_parsing(clean_env):
         # 2. Resolve evaluate_grade (not in factory orchestration -> uses code defaults)
         cfg_grade = resolve_model_config("evaluate_grade")
         assert cfg_grade["model"] == "z-ai/glm-5.2"  # default
-        assert cfg_grade["routing"] is None  # default
+        assert cfg_grade["routing"] == [
+            "Friendli",
+            "Parasail",
+        ]  # default_routing fallback
         assert cfg_grade["temperature"] == 0.0  # default
 
     os.unlink(sources_temp)
