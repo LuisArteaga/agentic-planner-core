@@ -2,6 +2,7 @@ import os
 import pathlib
 import json
 import functools
+import logging
 from typing import List, Optional, Dict, Any
 import yaml
 from pydantic import BaseModel, Field, model_validator
@@ -9,6 +10,8 @@ import requests
 from urllib3.util import Retry
 from requests.adapters import HTTPAdapter
 from langchain_openai import ChatOpenAI
+
+logger = logging.getLogger("planner.config")
 
 
 def load_env_file(filepath: str = ".env") -> None:
@@ -35,12 +38,23 @@ def load_env_file(filepath: str = ".env") -> None:
                     os.environ[key] = val
 
 
+class SearchParametersConfig(BaseModel):
+    """Pydantic schema for search parameters configuration."""
+
+    engine: str = "auto"
+    search_context_size: Optional[str] = None
+    max_results: Optional[int] = None
+    max_total_results: Optional[int] = None
+    excluded_domains: List[str] = Field(default_factory=list)
+
+
 class SourcesConfig(BaseModel):
     """Pydantic schema for parsing and validating sources.yaml configuration."""
 
     strict: bool = True
     repositories: List[str] = Field(default_factory=list)
     domains: List[str] = Field(default_factory=list)
+    search: SearchParametersConfig = Field(default_factory=SearchParametersConfig)
 
     @model_validator(mode="after")
     def validate_strict_sources(self) -> "SourcesConfig":
@@ -49,6 +63,27 @@ class SourcesConfig(BaseModel):
                 "Strict-mode is enabled (strict: true), but both 'repositories' "
                 "and 'domains' are empty. At least one source must be defined."
             )
+
+        # Normalize excluded_domains and check for overlaps
+        if self.search and self.search.excluded_domains:
+            normalized = [
+                d.strip().lower()
+                for d in self.search.excluded_domains
+                if d and d.strip()
+            ]
+            self.search.excluded_domains = normalized
+
+            whitelisted_domains = {d.strip().lower() for d in self.domains if d}
+            whitelisted_repos = {
+                f"github.com/{r.strip().lower()}" for r in self.repositories if r
+            }
+            whitelist_set = whitelisted_domains.union(whitelisted_repos)
+
+            for ext in self.search.excluded_domains:
+                if ext in whitelist_set:
+                    logger.warning(
+                        f"Overlap detected: Domain '{ext}' is defined in both allowed sources and excluded_domains."
+                    )
         return self
 
 

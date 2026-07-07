@@ -52,15 +52,26 @@ def web_search_node(state: RefinementState) -> Dict[str, Any]:
             openai_api_key=os.getenv("OPENROUTER_API_KEY"),
         )
 
-        # Build tool definition
+        # Build tool definition dynamically
+        search_params = state.get("search_params") or {}
+        tool_parameters = {"engine": search_params.get("engine", "auto")}
+        if search_params.get("search_context_size"):
+            tool_parameters["search_context_size"] = search_params[
+                "search_context_size"
+            ]
+        if search_params.get("max_results"):
+            tool_parameters["max_results"] = search_params["max_results"]
+        if search_params.get("max_total_results"):
+            tool_parameters["max_total_results"] = search_params["max_total_results"]
+        if allowed_domains:
+            tool_parameters["allowed_domains"] = allowed_domains
+        if search_params.get("excluded_domains"):
+            tool_parameters["excluded_domains"] = search_params["excluded_domains"]
+
         tool_definition: dict[str, Any] = {
             "type": "openrouter:web_search",
-            "parameters": {"engine": "auto"},
+            "parameters": tool_parameters,
         }
-
-        # Inject allowed domains/repositories if defined (crucial for ADR-0002 compliance)
-        if allowed_domains:
-            tool_definition["parameters"]["allowed_domains"] = allowed_domains
 
         # Bind tool and force the tool choice to guarantee search execution using direct bind
         llm_with_tools = model.bind(
