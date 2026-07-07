@@ -281,3 +281,59 @@ def test_get_llm_construction(clean_env):
                 "allow_fallbacks": False,
             }
             assert extra_body["thinking"] == "max"
+
+
+def test_search_config_parsing_and_overlap(clean_env, caplog):
+    os.environ["OPENROUTER_API_KEY"] = "test-key"
+    os.environ["GH_PAT"] = "test-pat"
+    os.environ["GITHUB_REPOSITORY"] = "test/repo"
+
+    # 1. Test standard parsing of search config
+    yaml_data = {
+        "strict": True,
+        "repositories": ["test/repo-allowed"],
+        "domains": ["example.com"],
+        "search": {
+            "engine": "exa",
+            "search_context_size": "medium",
+            "max_results": 5,
+            "max_total_results": 15,
+            "excluded_domains": ["REDDIT.COM ", "stackoverflow.com"],
+        },
+    }
+    temp_file = create_temp_yaml(yaml_data)
+    config = AppConfig(sources_yaml_path=temp_file)
+
+    assert config.sources.search.engine == "exa"
+    assert config.sources.search.search_context_size == "medium"
+    assert config.sources.search.max_results == 5
+    assert config.sources.search.max_total_results == 15
+    # Normalization check (lowercase and strip)
+    assert "reddit.com" in config.sources.search.excluded_domains
+    assert "stackoverflow.com" in config.sources.search.excluded_domains
+
+    os.unlink(temp_file)
+
+    # 2. Test overlap detection and warning logging
+    yaml_data_overlap = {
+        "strict": True,
+        "repositories": ["test/repo-allowed"],
+        "domains": ["example.com"],
+        "search": {
+            "engine": "auto",
+            "excluded_domains": ["EXAMPLE.COM"],  # Overlaps with domains
+        },
+    }
+    temp_file_overlap = create_temp_yaml(yaml_data_overlap)
+
+    import logging
+
+    with caplog.at_level(logging.WARNING):
+        # Trigger validation overlap warning
+        AppConfig(sources_yaml_path=temp_file_overlap)
+
+    # Verify warning was logged
+    warnings = [rec.message for rec in caplog.records if rec.levelno == logging.WARNING]
+    assert any("Overlap detected: Domain 'example.com'" in w for w in warnings)
+
+    os.unlink(temp_file_overlap)

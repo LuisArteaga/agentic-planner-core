@@ -196,6 +196,58 @@ class RefinementNodesTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             web_search_node(state)
 
+    @patch("planner.nodes.web_search.ChatOpenAI")
+    def test_web_search_execution_with_custom_params(self, mock_chat_router):
+        mock_instance = MagicMock()
+        mock_chat_router.return_value = mock_instance
+
+        mock_response = MagicMock(spec=AIMessage)
+        mock_response.content = "[]"
+        mock_response.response_metadata = {
+            "token_usage": {"prompt_tokens": 10, "completion_tokens": 15}
+        }
+
+        mock_bind = MagicMock()
+        mock_instance.bind.return_value = mock_bind
+        mock_bind.invoke.return_value = mock_response
+
+        state: RefinementState = {
+            "draft_issue_content": "Some draft",
+            "strict_mode": True,
+            "allowed_domains": ["arxiv.org"],
+            "search_params": {
+                "engine": "exa",
+                "search_context_size": "medium",
+                "max_results": 5,
+                "max_total_results": 15,
+                "excluded_domains": ["reddit.com"],
+            },
+            "messages": [],
+            "keywords": ["test"],
+            "search_queries": ["test"],
+            "search_results": [],
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "model_name": "",
+            "status": "idle",
+        }
+
+        _ = web_search_node(state)
+
+        # Verify tool binding was called with correct parameters
+        mock_instance.bind.assert_called_once()
+        _, kwargs = mock_instance.bind.call_args
+        tool_list = kwargs.get("tools", [])
+        self.assertEqual(tool_list[0]["type"], "openrouter:web_search")
+
+        tool_params = tool_list[0]["parameters"]
+        self.assertEqual(tool_params["engine"], "exa")
+        self.assertEqual(tool_params["search_context_size"], "medium")
+        self.assertEqual(tool_params["max_results"], 5)
+        self.assertEqual(tool_params["max_total_results"], 15)
+        self.assertEqual(tool_params["allowed_domains"], ["arxiv.org"])
+        self.assertEqual(tool_params["excluded_domains"], ["reddit.com"])
+
     @patch("planner.refine_graph.refine_subgraph")
     def test_master_graph_iteration(self, mock_subgraph):
         mock_subgraph.invoke.return_value = {"status": "success"}
@@ -214,6 +266,7 @@ class RefinementNodesTests(unittest.TestCase):
                 "current_issue_index": 0,
                 "strict_mode": False,
                 "allowed_domains": [],
+                "search_params": {"engine": "exa"},
                 "status": "idle",
             }
 
@@ -224,3 +277,7 @@ class RefinementNodesTests(unittest.TestCase):
             self.assertEqual(result["current_issue_index"], 2)
             self.assertEqual(result["status"], "success")
             self.assertEqual(mock_subgraph.invoke.call_count, 2)
+
+            # Assert that the subgraph was invoked with the propagated search_params
+            called_args = mock_subgraph.invoke.call_args[0][0]
+            self.assertEqual(called_args["search_params"], {"engine": "exa"})
