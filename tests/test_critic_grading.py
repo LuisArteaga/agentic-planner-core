@@ -22,10 +22,10 @@ class CriticGradingTests(unittest.TestCase):
         os.environ.clear()
         os.environ.update(self.original_env)
 
-    @patch("planner.nodes.propose_options.ChatOpenAI")
-    def test_propose_options_success(self, mock_chat_openai):
+    @patch("planner.nodes.propose_options.get_llm")
+    def test_propose_options_success(self, mock_get_llm):
         mock_instance = MagicMock()
-        mock_chat_openai.return_value = mock_instance
+        mock_get_llm.return_value = mock_instance
 
         mock_response = MagicMock(spec=AIMessage)
         mock_response.content = (
@@ -80,10 +80,10 @@ class CriticGradingTests(unittest.TestCase):
         self.assertEqual(output["completion_tokens"], 120)
         self.assertEqual(output["status"], "success")
 
-    @patch("planner.nodes.evaluate_grade.ChatOpenAI")
-    def test_evaluate_grade_success_first_attempt(self, mock_chat_openai):
+    @patch("planner.nodes.evaluate_grade.get_llm")
+    def test_evaluate_grade_success_first_attempt(self, mock_get_llm):
         mock_instance = MagicMock()
-        mock_chat_openai.return_value = mock_instance
+        mock_get_llm.return_value = mock_instance
 
         mock_structured_model = MagicMock()
         mock_instance.with_structured_output.return_value = mock_structured_model
@@ -151,10 +151,10 @@ class CriticGradingTests(unittest.TestCase):
         self.assertEqual(output["completion_tokens"], 100)
         self.assertEqual(output["status"], "success")
 
-    @patch("planner.nodes.evaluate_grade.ChatOpenAI")
-    def test_evaluate_grade_retry_loop_success(self, mock_chat_openai):
+    @patch("planner.nodes.evaluate_grade.get_llm")
+    def test_evaluate_grade_retry_loop_success(self, mock_get_llm):
         mock_instance = MagicMock()
-        mock_chat_openai.return_value = mock_instance
+        mock_get_llm.return_value = mock_instance
 
         mock_structured_model = MagicMock()
         mock_instance.with_structured_output.return_value = mock_structured_model
@@ -211,10 +211,10 @@ class CriticGradingTests(unittest.TestCase):
         self.assertEqual(output["status"], "success")
         self.assertEqual(mock_structured_model.invoke.call_count, 2)
 
-    @patch("planner.nodes.evaluate_grade.ChatOpenAI")
-    def test_evaluate_grade_retry_loop_exhausted_raises(self, mock_chat_openai):
+    @patch("planner.nodes.evaluate_grade.get_llm")
+    def test_evaluate_grade_retry_loop_exhausted_raises(self, mock_get_llm):
         mock_instance = MagicMock()
-        mock_chat_openai.return_value = mock_instance
+        mock_get_llm.return_value = mock_instance
 
         mock_structured_model = MagicMock()
         mock_instance.with_structured_output.return_value = mock_structured_model

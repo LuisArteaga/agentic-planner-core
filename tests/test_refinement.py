@@ -18,11 +18,11 @@ class RefinementNodesTests(unittest.TestCase):
         os.environ.clear()
         os.environ.update(self.original_env)
 
-    @patch("planner.nodes.analyze_sources.ChatOpenAI")
-    def test_analyze_sources_strict_mode(self, mock_chat_router):
+    @patch("planner.nodes.analyze_sources.get_llm")
+    def test_analyze_sources_strict_mode(self, mock_get_llm):
         # Setup mock model output
         mock_instance = MagicMock()
-        mock_chat_router.return_value = mock_instance
+        mock_get_llm.return_value = mock_instance
 
         mock_response = MagicMock(spec=AIMessage)
         mock_response.content = '{"keywords": ["auth", "jwt"], "suggested_sources": ["malicious-domain.com", "other/repo"]}'
@@ -61,10 +61,10 @@ class RefinementNodesTests(unittest.TestCase):
         self.assertEqual(output["prompt_tokens"], 15)
         self.assertEqual(output["completion_tokens"], 20)
 
-    @patch("planner.nodes.analyze_sources.ChatOpenAI")
-    def test_analyze_sources_non_strict_mode(self, mock_chat_router):
+    @patch("planner.nodes.analyze_sources.get_llm")
+    def test_analyze_sources_non_strict_mode(self, mock_get_llm):
         mock_instance = MagicMock()
-        mock_chat_router.return_value = mock_instance
+        mock_get_llm.return_value = mock_instance
 
         mock_response = MagicMock(spec=AIMessage)
         mock_response.content = '{"keywords": ["auth"], "suggested_sources": ["example.org", "langchain-ai/langgraph", "github.com/SWE-agent/SWE-agent"]}'
@@ -99,10 +99,10 @@ class RefinementNodesTests(unittest.TestCase):
         self.assertIn("github.com/langchain-ai/langgraph", output["allowed_domains"])
         self.assertIn("github.com/swe-agent/swe-agent", output["allowed_domains"])
 
-    @patch("planner.nodes.web_search.ChatOpenAI")
-    def test_web_search_execution(self, mock_chat_router):
+    @patch("planner.nodes.web_search.get_llm")
+    def test_web_search_execution(self, mock_get_llm):
         mock_instance = MagicMock()
-        mock_chat_router.return_value = mock_instance
+        mock_get_llm.return_value = mock_instance
 
         mock_response = MagicMock(spec=AIMessage)
         # Model returns JSON block of results as instructed
@@ -164,9 +164,9 @@ class RefinementNodesTests(unittest.TestCase):
 
     @patch("planner.nodes.web_search.fetch_allowed_url")
     @patch("planner.nodes.web_search.AppConfig")
-    @patch("planner.nodes.web_search.ChatOpenAI")
+    @patch("planner.nodes.web_search.get_llm")
     def test_web_search_with_pre_fetched_urls(
-        self, mock_chat_router, mock_config_class, mock_fetch
+        self, mock_get_llm, mock_config_class, mock_fetch
     ):
         # 1. Mock AppConfig to return custom urls
         mock_config = MagicMock()
@@ -182,7 +182,7 @@ class RefinementNodesTests(unittest.TestCase):
 
         # 3. Mock ChatOpenAI and response
         mock_instance = MagicMock()
-        mock_chat_router.return_value = mock_instance
+        mock_get_llm.return_value = mock_instance
 
         mock_response = MagicMock(spec=AIMessage)
         mock_response.content = (
@@ -267,10 +267,10 @@ class RefinementNodesTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             web_search_node(state)
 
-    @patch("planner.nodes.web_search.ChatOpenAI")
-    def test_web_search_execution_with_custom_params(self, mock_chat_router):
+    @patch("planner.nodes.web_search.get_llm")
+    def test_web_search_execution_with_custom_params(self, mock_get_llm):
         mock_instance = MagicMock()
-        mock_chat_router.return_value = mock_instance
+        mock_get_llm.return_value = mock_instance
 
         mock_response = MagicMock(spec=AIMessage)
         mock_response.content = "[]"

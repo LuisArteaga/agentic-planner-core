@@ -1,13 +1,12 @@
-import os
 import logging
 from pathlib import Path
 from typing import Dict, Any, List
 from pydantic import BaseModel, Field
 from langchain_core.messages import SystemMessage, HumanMessage
 from planner.state import RefinementState
-from langchain_openai import ChatOpenAI
 from scripts.telemetry import orchestrator_phase
-from planner.config import get_model
+from planner.config import get_llm
+
 
 logger = logging.getLogger("planner.nodes.evaluate_grade")
 
@@ -83,14 +82,8 @@ def evaluate_grade_node(state: RefinementState) -> Dict[str, Any]:
         if agdr_content:
             combined_decisions += f"Existing agent AgDRs:\n{agdr_content}\n\n"
 
-        # Instantiate Critic LLM
-        model_name = get_model("evaluate_grade")
-        model = ChatOpenAI(
-            model=model_name,
-            temperature=0.0,
-            openai_api_base="https://openrouter.ai/api/v1",
-            openai_api_key=os.getenv("OPENROUTER_API_KEY"),
-        )
+        # Instantiate Critic LLM using get_llm
+        model = get_llm("evaluate_grade")
 
         # Set up structured output including raw message for token metadata
         structured_model = model.with_structured_output(
@@ -176,6 +169,8 @@ def evaluate_grade_node(state: RefinementState) -> Dict[str, Any]:
                             prompt_tokens = token_usage.get("prompt_tokens", 0)
                             completion_tokens = token_usage.get("completion_tokens", 0)
                         break
+                    else:
+                        last_error = f"Parsed value was not a CriticEvaluation instance (it was {type(parsed_val)}: {parsed_val})"
 
             except Exception as e:
                 logger.warning(f"Attempt {attempt} failed with error: {e}")
