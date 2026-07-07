@@ -6,10 +6,11 @@ test:
 	python -m pytest
 
 lint:
-	python -m ruff check planner tests
+	python -m ruff check planner tests scripts
 
 format-check:
-	python -m ruff format --check planner tests
+	python -m ruff format --check planner tests scripts
+
 
 type-check:
 	python -m mypy planner tests scripts
