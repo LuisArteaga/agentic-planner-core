@@ -5,6 +5,7 @@ import re
 import sys
 from pathlib import Path
 from langchain_openai import ChatOpenAI
+from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.messages import (
     BaseMessage,
     HumanMessage,
@@ -15,6 +16,36 @@ from langchain_core.messages import (
 from langchain_core.tools import tool
 from deepagents import create_deep_agent
 from planner.config import AppConfig, get_model
+from scripts.telemetry import (
+    init_telemetry,
+    start_orchestrator_loop,
+    end_orchestrator_loop,
+)
+
+
+class ConsoleLoggingHandler(BaseCallbackHandler):
+    """LangChain callback handler that logs LLM and tool activity to the console."""
+
+    _MAX_LEN = 200  # Max chars to show inline before truncating
+
+    def _truncate(self, text: str) -> str:
+        text = str(text)
+        if len(text) > self._MAX_LEN:
+            return text[: self._MAX_LEN] + "..."
+        return text
+
+    def on_llm_start(self, serialized, prompts, **kwargs):
+        model = serialized.get("kwargs", {}).get("model") or serialized.get(
+            "name", "LLM"
+        )
+        print(f"\n[Agent]: Thinking... (model: {model})", flush=True)
+
+    def on_tool_start(self, serialized, input_str, **kwargs):
+        name = serialized.get("name", "tool")
+        print(f"\n[Tool ▶]: {name}({self._truncate(input_str)})", flush=True)
+
+    def on_tool_end(self, output, **kwargs):
+        print(f"[Tool ◀]: {self._truncate(output)}", flush=True)
 
 
 def get_repo_name(config: AppConfig) -> str:
@@ -297,13 +328,14 @@ def deserialize_messages(serialized: list[dict]) -> list[BaseMessage]:
     return deserialized
 
 
-def save_grill_session(
+def save_session(
     config: AppConfig,
     session_id: str,
     messages: list[BaseMessage],
+    prefix: str = "grill",
     completed: bool = False,
 ):
-    """Saves the current grill session to .planner/sessions/{repo_name}/grill_{session_id}.json."""
+    """Saves an interactive session to .planner/sessions/{repo_name}/{prefix}_{session_id}.json."""
     try:
         repo_name = get_repo_name(config)
         planner_core_root = Path(__file__).resolve().parents[1]
@@ -317,7 +349,7 @@ def save_grill_session(
             print("Error: Session directory traversal detected.", file=sys.stderr)
             return
 
-        filename = f"grill_{session_id}.json"
+        filename = f"{prefix}_{session_id}.json"
         target_file = (sessions_dir / filename).resolve()
 
         # Prevent directory traversal for target_file
@@ -333,7 +365,7 @@ def save_grill_session(
         last_modified = datetime.datetime.now().astimezone().isoformat()
 
         session_data = {
-            "session_id": f"grill_{session_id}",
+            "session_id": f"{prefix}_{session_id}",
             "last_modified": last_modified,
             "completed": completed,
             "messages": serialized_messages,
@@ -343,7 +375,27 @@ def save_grill_session(
             json.dump(session_data, f, ensure_ascii=False, indent=2)
 
     except Exception as e:
-        print(f"Warning: Auto-saving grill session failed: {e}", file=sys.stderr)
+        print(f"Warning: Auto-saving {prefix} session failed: {e}", file=sys.stderr)
+
+
+def save_grill_session(
+    config: AppConfig,
+    session_id: str,
+    messages: list[BaseMessage],
+    completed: bool = False,
+):
+    """Saves the current grill session. Delegates to save_session with prefix='grill'."""
+    save_session(config, session_id, messages, prefix="grill", completed=completed)
+
+
+def save_verify_session(
+    config: AppConfig,
+    session_id: str,
+    messages: list[BaseMessage],
+    completed: bool = False,
+):
+    """Saves the current verify session. Delegates to save_session with prefix='verify'."""
+    save_session(config, session_id, messages, prefix="verify", completed=completed)
 
 
 def run_interactive_console_loop(
@@ -354,6 +406,7 @@ def run_interactive_console_loop(
     session_id: str = None,
     existing_messages: list[BaseMessage] = None,
     session_state: dict = None,
+    session_prefix: str = "grill",
 ):
     """Generic interactive console chat loop for planning agents."""
     if existing_messages:
@@ -363,7 +416,9 @@ def run_interactive_console_loop(
 
     # Initial save if auto-saving is active and this is a new session
     if config and session_id and not existing_messages:
-        save_grill_session(config, session_id, messages, completed=False)
+        save_session(
+            config, session_id, messages, prefix=session_prefix, completed=False
+        )
 
     print(f"\n[{agent_name}]: Initializing session... (Type 'exit' or 'quit' to end)\n")
 
@@ -391,8 +446,12 @@ def run_interactive_console_loop(
                 # Save state after agent step
                 if config and session_id:
                     completed = bool(session_state and session_state.get("completed"))
-                    save_grill_session(
-                        config, session_id, messages, completed=completed
+                    save_session(
+                        config,
+                        session_id,
+                        messages,
+                        prefix=session_prefix,
+                        completed=completed,
                     )
 
                 if session_state and session_state.get("completed"):
@@ -410,14 +469,22 @@ def run_interactive_console_loop(
                 print(f"Ending {agent_name} session.")
                 # Save state as completed
                 if config and session_id:
-                    save_grill_session(config, session_id, messages, completed=True)
+                    save_session(
+                        config,
+                        session_id,
+                        messages,
+                        prefix=session_prefix,
+                        completed=True,
+                    )
                 break
 
             messages.append(HumanMessage(content=user_input))
 
             # Save state after user input
             if config and session_id:
-                save_grill_session(config, session_id, messages, completed=False)
+                save_session(
+                    config, session_id, messages, prefix=session_prefix, completed=False
+                )
 
         except KeyboardInterrupt:
             print("\nSession interrupted.")
@@ -427,11 +494,15 @@ def run_interactive_console_loop(
             break
 
 
-def run_grill(config: AppConfig, session_id: str = None):
-    """Runs the interactive PRD/ADR design session (grill-with-docs) from planner-core."""
-    print("=== Starting Phase 1: Interactive Design Session (grill-with-docs) ===")
-    print(f"Target workspace: {config.github_workspace}")
-
+def load_or_select_session(config: AppConfig, prefix: str, session_id: str = None):
+    """
+    Loads a specific session directly by session_id, or scans for incomplete sessions
+    with the given prefix and prompts the user to select one via an interactive menu.
+    Returns:
+        (resumed_messages, active_session_id)
+        - resumed_messages: List of deserialized messages or None if a new session should start.
+        - active_session_id: The ID of the session (resumed clean ID or a newly generated one).
+    """
     repo_name = get_repo_name(config)
     planner_core_root = Path(__file__).resolve().parents[1]
     sessions_base = (planner_core_root / ".planner" / "sessions").resolve()
@@ -446,6 +517,7 @@ def run_grill(config: AppConfig, session_id: str = None):
 
     resumed_messages = None
     resumed_session_id = None
+    prefix_with_under = f"{prefix}_"
 
     if session_id:
         if not sessions_dir_ok:
@@ -454,9 +526,13 @@ def run_grill(config: AppConfig, session_id: str = None):
             )
             sys.exit(1)
 
-        # Strip grill_ prefix if present to find it robustly
-        clean_id = session_id[6:] if session_id.startswith("grill_") else session_id
-        filename1 = f"grill_{clean_id}.json"
+        # Strip prefix if present to find it robustly
+        clean_id = (
+            session_id[len(prefix_with_under) :]
+            if session_id.startswith(prefix_with_under)
+            else session_id
+        )
+        filename1 = f"{prefix_with_under}{clean_id}.json"
         filename2 = f"{session_id}.json"
 
         target_file = None
@@ -489,14 +565,16 @@ def run_grill(config: AppConfig, session_id: str = None):
                 data = json.load(f)
             resumed_messages = deserialize_messages(data["messages"])
             resumed_session_id = clean_id
-            print(f"Resuming session '{resumed_session_id}' directly...")
+            print(
+                f"Resuming session '{prefix_with_under}{resumed_session_id}' directly..."
+            )
         except Exception as e:
             print(f"Error loading session '{session_id}': {e}", file=sys.stderr)
             sys.exit(1)
 
     elif sessions_dir_ok and sessions_dir.exists():
-        # Scan for existing grill session files
-        session_files = list(sessions_dir.glob("grill_*.json"))
+        # Scan for existing session files with prefix
+        session_files = list(sessions_dir.glob(f"{prefix_with_under}*.json"))
         incomplete_sessions = []
 
         for f_path in session_files:
@@ -513,10 +591,9 @@ def run_grill(config: AppConfig, session_id: str = None):
                     continue
 
                 if not data["completed"]:
-                    # extract clean session id
                     clean_id = (
-                        f_path.stem[6:]
-                        if f_path.stem.startswith("grill_")
+                        f_path.stem[len(prefix_with_under) :]
+                        if f_path.stem.startswith(prefix_with_under)
                         else f_path.stem
                     )
                     incomplete_sessions.append(
@@ -544,18 +621,17 @@ def run_grill(config: AppConfig, session_id: str = None):
 
         if incomplete_sessions:
             print(
-                "\nEs wurden unvollständige Grill-Sitzungen gefunden. Möchtest du eine fortsetzen?"
+                f"\nEs wurden unvollständige {prefix.capitalize()}-Sitzungen gefunden. Möchtest du eine fortsetzen?"
             )
             for idx, sess in enumerate(incomplete_sessions):
                 last_mod = sess["last_modified"]
-                # Format to a nicer timestamp if it parses
                 try:
                     dt = datetime.datetime.fromisoformat(last_mod)
                     last_mod_str = dt.strftime("%Y-%m-%d %H:%M:%S")
                 except Exception:
                     last_mod_str = last_mod
                 print(
-                    f"  {idx + 1}. grill_{sess['id']} fortsetzen (Zuletzt geändert: {last_mod_str})"
+                    f"  {idx + 1}. {prefix_with_under}{sess['id']} fortsetzen (Zuletzt geändert: {last_mod_str})"
                 )
             print(f"  {len(incomplete_sessions) + 1}. Eine neue Sitzung starten")
 
@@ -582,13 +658,26 @@ def run_grill(config: AppConfig, session_id: str = None):
                 chosen = incomplete_sessions[choice - 1]
                 resumed_session_id = chosen["id"]
                 resumed_messages = deserialize_messages(chosen["messages"])
-                print(f"Setze Sitzung 'grill_{resumed_session_id}' fort...")
+                print(
+                    f"Setze Sitzung '{prefix_with_under}{resumed_session_id}' fort..."
+                )
 
     if resumed_messages is not None:
         active_session_id = resumed_session_id
     else:
-        # Generate timestamp-based session_id: e.g. "2026-07-05_07-40-00"
         active_session_id = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+
+    return resumed_messages, active_session_id
+
+
+def run_grill(config: AppConfig, session_id: str = None):
+    """Runs the interactive PRD/ADR design session (grill-with-docs) from planner-core."""
+    print("=== Starting Phase 1: Interactive Design Session (grill-with-docs) ===")
+    print(f"Target workspace: {config.github_workspace}")
+
+    resumed_messages, active_session_id = load_or_select_session(
+        config, "grill", session_id
+    )
 
     assert active_session_id is not None
 
@@ -597,8 +686,6 @@ def run_grill(config: AppConfig, session_id: str = None):
         os.environ.get("LANGFUSE_PUBLIC_KEY") and os.environ.get("LANGFUSE_SECRET_KEY")
     )
     if use_telemetry:
-        from scripts.telemetry import init_telemetry, start_orchestrator_loop
-
         init_telemetry()
         start_orchestrator_loop(session_id=active_session_id)
 
@@ -653,41 +740,80 @@ def run_grill(config: AppConfig, session_id: str = None):
         raise e
     finally:
         if use_telemetry:
-            from scripts.telemetry import end_orchestrator_loop
-
             end_orchestrator_loop(exit_code=exit_code)
 
 
-def run_verify(config: AppConfig):
+def run_verify(config: AppConfig, session_id: str = None):
     """Runs the learning verification session (wise-teacher) from planner-core."""
     print("=== Starting Phase 1b: Learning Verification Session (wise-teacher) ===")
     print(f"Target workspace: {config.github_workspace}")
-    print("Connecting to OpenRouter...")
 
-    read_target_file, _ = create_target_file_tools(config)
-    _, save_teaching_checklist = create_planning_tools(config)
-
-    agent = setup_planning_agent(
-        config,
-        "wise-teacher",
-        [read_target_file, ask_question, save_teaching_checklist],
+    resumed_messages, active_session_id = load_or_select_session(
+        config, "verify", session_id
     )
 
-    # Read PRD/CONTEXT files to bootstrap wise-teacher
-    prd_path = Path(config.github_workspace) / "PRD.md"
-    context_path = Path(config.github_workspace) / "CONTEXT.md"
+    assert active_session_id is not None
 
-    initial_user_message = (
-        "Please start the review session and verify my understanding."
+    # Optional Langfuse tracing telemetry
+    use_telemetry = bool(
+        os.environ.get("LANGFUSE_PUBLIC_KEY") and os.environ.get("LANGFUSE_SECRET_KEY")
     )
-    if prd_path.exists():
-        with open(prd_path, "r", encoding="utf-8") as f:
-            initial_user_message += f"\n\nPRD.md content:\n{f.read()}"
-    if context_path.exists():
-        with open(context_path, "r", encoding="utf-8") as f:
-            initial_user_message += f"\n\nCONTEXT.md glossary content:\n{f.read()}"
+    if use_telemetry:
+        init_telemetry()
+        start_orchestrator_loop(session_id=active_session_id)
 
-    run_interactive_console_loop(agent, "Wise Teacher", initial_user_message)
+    exit_code = 0
+    try:
+        print("Connecting to OpenRouter...")
+        read_target_file, _ = create_target_file_tools(config)
+        _, save_teaching_checklist = create_planning_tools(config)
+
+        agent = setup_planning_agent(
+            config,
+            "wise-teacher",
+            [read_target_file, ask_question, save_teaching_checklist],
+        )
+
+        if resumed_messages is not None:
+            run_interactive_console_loop(
+                agent,
+                "Wise Teacher",
+                config=config,
+                session_id=active_session_id,
+                existing_messages=resumed_messages,
+                session_prefix="verify",
+            )
+        else:
+            # Read PRD/CONTEXT files to bootstrap wise-teacher
+            prd_path = Path(config.github_workspace) / "PRD.md"
+            context_path = Path(config.github_workspace) / "CONTEXT.md"
+
+            initial_user_message = (
+                "Please start the review session and verify my understanding."
+            )
+            if prd_path.exists():
+                with open(prd_path, "r", encoding="utf-8") as f:
+                    initial_user_message += f"\n\nPRD.md content:\n{f.read()}"
+            if context_path.exists():
+                with open(context_path, "r", encoding="utf-8") as f:
+                    initial_user_message += (
+                        f"\n\nCONTEXT.md glossary content:\n{f.read()}"
+                    )
+
+            run_interactive_console_loop(
+                agent,
+                "Wise Teacher",
+                initial_message=initial_user_message,
+                config=config,
+                session_id=active_session_id,
+                session_prefix="verify",
+            )
+    except Exception as e:
+        exit_code = 1
+        raise e
+    finally:
+        if use_telemetry:
+            end_orchestrator_loop(exit_code=exit_code)
 
 
 def run_draft(config: AppConfig):
@@ -696,42 +822,65 @@ def run_draft(config: AppConfig):
     print(f"Target workspace: {config.github_workspace}")
     print("Connecting to OpenRouter...")
 
-    read_target_file, _ = create_target_file_tools(config)
-    save_draft_issue, _ = create_planning_tools(config)
-    agent = setup_planning_agent(
-        config, "draft-issues", [save_draft_issue, read_target_file]
+    # Optional Langfuse tracing telemetry
+    session_id = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    use_telemetry = bool(
+        os.environ.get("LANGFUSE_PUBLIC_KEY") and os.environ.get("LANGFUSE_SECRET_KEY")
     )
+    if use_telemetry:
+        init_telemetry()
+        start_orchestrator_loop(session_id=session_id)
 
-    # Read target PRD/CONTEXT files
-    prd_path = Path(config.github_workspace) / "PRD.md"
-    context_path = Path(config.github_workspace) / "CONTEXT.md"
-
-    if not prd_path.exists():
-        print(f"Error: PRD.md not found at {prd_path}.", file=sys.stderr)
-        sys.exit(1)
-
-    with open(prd_path, "r", encoding="utf-8") as f:
-        prd_content = f.read()
-
-    context_content = ""
-    if context_path.exists():
-        with open(context_path, "r", encoding="utf-8") as f:
-            context_content = f.read()
-
-    print("Generating and saving draft issues centrally...")
+    exit_code = 0
     try:
-        agent.invoke(
+        read_target_file, _ = create_target_file_tools(config)
+        save_draft_issue, _ = create_planning_tools(config)
+        agent = setup_planning_agent(
+            config, "draft-issues", [save_draft_issue, read_target_file]
+        )
+
+        # Read target PRD/CONTEXT files
+        prd_path = Path(config.github_workspace) / "PRD.md"
+        context_path = Path(config.github_workspace) / "CONTEXT.md"
+
+        if not prd_path.exists():
+            print(f"Error: PRD.md not found at {prd_path}.", file=sys.stderr)
+            sys.exit(1)
+
+        with open(prd_path, "r", encoding="utf-8") as f:
+            prd_content = f.read()
+
+        context_content = ""
+        if context_path.exists():
+            with open(context_path, "r", encoding="utf-8") as f:
+                context_content = f.read()
+
+        print("Generating and saving draft issues centrally...")
+        handler = ConsoleLoggingHandler()
+        result = agent.invoke(
             {
                 "messages": [
                     HumanMessage(
                         content=f"PRD Content:\n{prd_content}\n\nDomain Glossary (CONTEXT.md):\n{context_content}"
                     )
                 ]
-            }
+            },
+            config={"callbacks": [handler]},
         )
+
+        # Print final agent summary response
+        if isinstance(result, dict) and "messages" in result:
+            last_msg = result["messages"][-1]
+            if hasattr(last_msg, "content") and last_msg.content:
+                print(f"\n[Draft Agent]: {last_msg.content}")
+
         print(
-            "Draft issues generation complete. Check '.planner/drafts/' centrally in planner-core."
+            "\nDraft issues generation complete. Check '.planner/drafts/' centrally in planner-core."
         )
     except Exception as e:
+        exit_code = 1
         print(f"Error generating draft issues: {e}", file=sys.stderr)
         sys.exit(1)
+    finally:
+        if use_telemetry:
+            end_orchestrator_loop(exit_code=exit_code)

@@ -1,15 +1,13 @@
 import argparse
 import glob
+import logging
 import sys
 from pathlib import Path
 from planner.config import AppConfig
 from planner.state import AgentState
 from planner.refine_graph import graph
 from scripts.telemetry import (
-    end_orchestrator_loop,
-    init_telemetry,
     orchestrator_phase,
-    start_orchestrator_loop,
 )
 
 
@@ -40,9 +38,13 @@ def main():
     )
 
     # verify command
-    subparsers.add_parser(
+    verify_parser = subparsers.add_parser(
         "verify",
         help="Start the interactive learning verification session (wise-teacher).",
+    )
+    verify_parser.add_argument(
+        "--session-id",
+        help="Explicit session ID to resume an existing verify session.",
     )
 
     # draft command
@@ -60,10 +62,16 @@ def main():
         if args.command == "grill":
             run_grill(config, session_id=args.session_id)
         elif args.command == "verify":
-            run_verify(config)
+            run_verify(config, session_id=args.session_id)
         elif args.command == "draft":
             run_draft(config)
     elif args.command == "refine":
+        from scripts.telemetry import (
+            init_telemetry,
+            start_orchestrator_loop,
+            end_orchestrator_loop,
+        )
+
         init_telemetry()
         start_orchestrator_loop()
         exit_code = 0
@@ -140,7 +148,18 @@ def main():
                         )
 
                     print("Starting refinement process...")
-                    result = graph.invoke(initial_state)
+                    # Enable INFO-level logging so node logger.info() calls appear on console
+                    logging.basicConfig(
+                        level=logging.INFO,
+                        format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+                        datefmt="%H:%M:%S",
+                    )
+                    from planner.cli_planning import ConsoleLoggingHandler
+
+                    handler = ConsoleLoggingHandler()
+                    result = graph.invoke(
+                        initial_state, config={"callbacks": [handler]}
+                    )
                     print(
                         f"Refinement process finished with status: {result.get('status')}"
                     )
@@ -150,6 +169,8 @@ def main():
             print(f"Error: {e}", file=sys.stderr)
             exit_code = 1
         finally:
+            from scripts.telemetry import end_orchestrator_loop
+
             end_orchestrator_loop(exit_code=exit_code)
 
         if exit_code != 0:

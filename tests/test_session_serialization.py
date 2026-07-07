@@ -1,7 +1,7 @@
 import datetime
 import json
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, ANY
 
 import pytest
 from langchain_core.messages import (
@@ -15,6 +15,7 @@ from planner.cli_planning import (
     deserialize_messages,
     run_interactive_console_loop,
     save_grill_session,
+    save_verify_session,
     serialize_messages,
 )
 
@@ -188,7 +189,7 @@ def test_console_loop_auto_save_integration(temp_workspace):
     # Mock input to simulate user typing "exit"
     with (
         patch("builtins.input", side_effect=["exit"]) as mock_input,
-        patch("planner.cli_planning.save_grill_session") as mock_save,
+        patch("planner.cli_planning.save_session") as mock_save,
     ):
         run_interactive_console_loop(
             mock_agent,
@@ -199,14 +200,14 @@ def test_console_loop_auto_save_integration(temp_workspace):
         )
 
         mock_input.assert_called_once()
-        # Verify save_grill_session was called during loop execution
+        # Verify save_session was called during loop execution
         # 1. Initial save before loop starts (completed=False)
         # 2. Save after agent reply (completed=False)
         # 3. Save when user types "exit" (completed=True)
         assert mock_save.call_count >= 3
         # Check last call is completed=True
-        last_call_args = mock_save.call_args_list[-1]
-        assert last_call_args[1]["completed"] is True
+        last_call_kwargs = mock_save.call_args_list[-1][1]
+        assert last_call_kwargs["completed"] is True
 
 
 def test_console_loop_no_auto_save_when_omitted():
@@ -474,9 +475,9 @@ def test_run_grill_telemetry_enabled_success(temp_workspace):
         patch("planner.cli_planning.setup_planning_agent", return_value=mock_agent),
         patch("planner.cli_planning.run_interactive_console_loop") as mock_loop,
         patch.dict("os.environ", env_keys, clear=False),
-        patch("scripts.telemetry.init_telemetry") as mock_init,
-        patch("scripts.telemetry.start_orchestrator_loop") as mock_start,
-        patch("scripts.telemetry.end_orchestrator_loop") as mock_end,
+        patch("planner.cli_planning.init_telemetry") as mock_init,
+        patch("planner.cli_planning.start_orchestrator_loop") as mock_start,
+        patch("planner.cli_planning.end_orchestrator_loop") as mock_end,
     ):
         from planner.cli_planning import run_grill
 
@@ -502,9 +503,9 @@ def test_run_grill_telemetry_enabled_failure(temp_workspace):
             side_effect=Exception("Setup failed"),
         ),
         patch.dict("os.environ", env_keys, clear=False),
-        patch("scripts.telemetry.init_telemetry") as mock_init,
-        patch("scripts.telemetry.start_orchestrator_loop") as mock_start,
-        patch("scripts.telemetry.end_orchestrator_loop") as mock_end,
+        patch("planner.cli_planning.init_telemetry") as mock_init,
+        patch("planner.cli_planning.start_orchestrator_loop") as mock_start,
+        patch("planner.cli_planning.end_orchestrator_loop") as mock_end,
     ):
         from planner.cli_planning import run_grill
 
@@ -584,7 +585,7 @@ def test_console_loop_exits_on_finish_session(temp_workspace):
 
     with (
         patch("builtins.input") as mock_input,
-        patch("planner.cli_planning.save_grill_session") as mock_save,
+        patch("planner.cli_planning.save_session") as mock_save,
         patch("builtins.print"),
     ):
         run_interactive_console_loop(
@@ -599,7 +600,454 @@ def test_console_loop_exits_on_finish_session(temp_workspace):
         # Verify that input was never called because it broke immediately when session_state["completed"] became True
         mock_input.assert_not_called()
 
-        # Verify that save_grill_session was called with completed=True
+        # Verify that save_session was called with completed=True
         assert mock_save.call_count >= 2
-        last_call_args = mock_save.call_args_list[-1]
-        assert last_call_args[1]["completed"] is True
+        last_call_kwargs = mock_save.call_args_list[-1][1]
+        assert last_call_kwargs["completed"] is True
+
+
+# ---------------------------------------------------------------------------
+# Fixture: clean up verify session files in shared .planner/sessions/test-repo
+# to prevent cross-test state pollution from tests that write to disk.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=False)
+def verify_sessions_cleanup():
+    """Remove all verify_*.json files from .planner/sessions/test-repo before and after each test."""
+    planner_core_root = Path(__file__).resolve().parents[1]
+    sessions_dir = planner_core_root / ".planner" / "sessions" / "test-repo"
+
+    def _cleanup():
+        if sessions_dir.exists():
+            for f in sessions_dir.glob("verify_*.json"):
+                f.unlink(missing_ok=True)
+
+    _cleanup()
+    yield
+    _cleanup()
+
+
+# ---------------------------------------------------------------------------
+# Tests for verify session save/resume
+# ---------------------------------------------------------------------------
+
+
+def test_save_verify_session(temp_workspace, verify_sessions_cleanup):
+    """save_verify_session should write verify_<id>.json with correct structure."""
+    config, _ = temp_workspace
+    session_id = "verify-test-001"
+    messages: list[BaseMessage] = [
+        HumanMessage(content="Let's start the verify session.")
+    ]
+
+    save_verify_session(config, session_id, messages, completed=False)
+
+    planner_core_root = Path(__file__).resolve().parents[1]
+    sessions_dir = planner_core_root / ".planner" / "sessions" / "test-repo"
+    session_file = sessions_dir / f"verify_{session_id}.json"
+    assert session_file.exists(), f"Expected session file at {session_file}"
+
+    with open(session_file, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    assert data["session_id"] == f"verify_{session_id}"
+    assert data["completed"] is False
+    assert len(data["messages"]) == 1
+    assert data["messages"][0]["type"] == "human"
+
+
+def test_run_verify_resumes_session_via_menu(temp_workspace, verify_sessions_cleanup):
+    """run_verify should offer incomplete sessions and resume the chosen one."""
+    config, _ = temp_workspace
+
+    planner_core_root = Path(__file__).resolve().parents[1]
+    sessions_dir = planner_core_root / ".planner" / "sessions" / "test-repo"
+    sessions_dir.mkdir(parents=True, exist_ok=True)
+
+    session_file = sessions_dir / "verify_menu-resume.json"
+    session_data = {
+        "session_id": "verify_menu-resume",
+        "last_modified": datetime.datetime.now().isoformat(),
+        "completed": False,
+        "messages": [{"type": "human", "content": "Start verify"}],
+    }
+    with open(session_file, "w") as f:
+        json.dump(session_data, f)
+
+    mock_agent = MagicMock()
+    mock_agent.invoke.return_value = {
+        "messages": [
+            HumanMessage(content="Start verify"),
+            AIMessage(content="Let's begin!"),
+        ]
+    }
+
+    with (
+        patch("builtins.input", side_effect=["1", "exit"]),
+        patch("planner.cli_planning.setup_planning_agent", return_value=mock_agent),
+        patch(
+            "planner.cli_planning.create_target_file_tools",
+            return_value=(MagicMock(), MagicMock()),
+        ),
+        patch(
+            "planner.cli_planning.create_planning_tools",
+            return_value=(MagicMock(), MagicMock()),
+        ),
+        patch("planner.cli_planning.run_interactive_console_loop") as mock_loop,
+    ):
+        from planner.cli_planning import run_verify
+
+        run_verify(config)
+
+        mock_loop.assert_called_once()
+        kwargs = mock_loop.call_args[1]
+        assert kwargs["session_id"] == "menu-resume"
+        assert len(kwargs["existing_messages"]) == 1
+        assert kwargs["existing_messages"][0].content == "Start verify"
+        assert kwargs["session_prefix"] == "verify"
+
+
+def test_run_verify_direct_session_id_exists(temp_workspace, verify_sessions_cleanup):
+    """run_verify --session-id should resume the matching file directly."""
+    config, _ = temp_workspace
+
+    planner_core_root = Path(__file__).resolve().parents[1]
+    sessions_dir = planner_core_root / ".planner" / "sessions" / "test-repo"
+    sessions_dir.mkdir(parents=True, exist_ok=True)
+
+    session_file = sessions_dir / "verify_direct-id.json"
+    session_data = {
+        "session_id": "verify_direct-id",
+        "last_modified": datetime.datetime.now().isoformat(),
+        "completed": False,
+        "messages": [{"type": "human", "content": "Resuming directly"}],
+    }
+    with open(session_file, "w") as f:
+        json.dump(session_data, f)
+
+    mock_agent = MagicMock()
+    mock_agent.invoke.return_value = {
+        "messages": [
+            HumanMessage(content="Resuming directly"),
+            AIMessage(content="Welcome back!"),
+        ]
+    }
+
+    with (
+        patch("builtins.input", side_effect=["exit"]),
+        patch("planner.cli_planning.setup_planning_agent", return_value=mock_agent),
+        patch(
+            "planner.cli_planning.create_target_file_tools",
+            return_value=(MagicMock(), MagicMock()),
+        ),
+        patch(
+            "planner.cli_planning.create_planning_tools",
+            return_value=(MagicMock(), MagicMock()),
+        ),
+        patch("planner.cli_planning.run_interactive_console_loop") as mock_loop,
+    ):
+        from planner.cli_planning import run_verify
+
+        run_verify(config, session_id="direct-id")
+
+        mock_loop.assert_called_once()
+        kwargs = mock_loop.call_args[1]
+        assert kwargs["session_id"] == "direct-id"
+        assert len(kwargs["existing_messages"]) == 1
+        assert kwargs["existing_messages"][0].content == "Resuming directly"
+        assert kwargs["session_prefix"] == "verify"
+
+
+def test_run_verify_direct_session_id_not_found(
+    temp_workspace, verify_sessions_cleanup
+):
+    """run_verify with a non-existent session-id should exit with an error."""
+    config, _ = temp_workspace
+
+    from planner.cli_planning import run_verify
+
+    with pytest.raises(SystemExit):
+        run_verify(config, session_id="nonexistent-verify-id")
+
+
+def test_run_verify_invalid_json_is_ignored(temp_workspace, verify_sessions_cleanup):
+    """Corrupted verify session files should be skipped with a warning."""
+    config, _ = temp_workspace
+
+    planner_core_root = Path(__file__).resolve().parents[1]
+    sessions_dir = planner_core_root / ".planner" / "sessions" / "test-repo"
+    sessions_dir.mkdir(parents=True, exist_ok=True)
+
+    session_file = sessions_dir / "verify_corrupt.json"
+    session_file.write_text("{ this is not valid json }")
+
+    mock_agent = MagicMock()
+    mock_agent.invoke.return_value = {
+        "messages": [HumanMessage(content="init"), AIMessage(content="Hello")]
+    }
+
+    with (
+        patch("builtins.input", side_effect=["exit"]),
+        patch("planner.cli_planning.setup_planning_agent", return_value=mock_agent),
+        patch(
+            "planner.cli_planning.create_target_file_tools",
+            return_value=(MagicMock(), MagicMock()),
+        ),
+        patch(
+            "planner.cli_planning.create_planning_tools",
+            return_value=(MagicMock(), MagicMock()),
+        ),
+        patch("planner.cli_planning.save_session"),
+    ):
+        from planner.cli_planning import run_verify
+
+        # Should not raise — corrupted file is silently ignored, and no valid sessions
+        # are found so we go directly to a new session (no menu).
+        run_verify(config)
+
+
+def test_run_verify_telemetry_disabled(temp_workspace, verify_sessions_cleanup):
+    """run_verify should not call telemetry functions when keys are absent."""
+    config, _ = temp_workspace
+
+    mock_agent = MagicMock()
+    mock_agent.invoke.return_value = {
+        "messages": [HumanMessage(content="init"), AIMessage(content="hi")]
+    }
+
+    with (
+        patch("builtins.input", side_effect=["exit"]),
+        patch("planner.cli_planning.setup_planning_agent", return_value=mock_agent),
+        patch(
+            "planner.cli_planning.create_target_file_tools",
+            return_value=(MagicMock(), MagicMock()),
+        ),
+        patch(
+            "planner.cli_planning.create_planning_tools",
+            return_value=(MagicMock(), MagicMock()),
+        ),
+        patch("planner.cli_planning.save_session"),
+        patch.dict("os.environ", {}, clear=True),
+    ):
+        from planner.cli_planning import run_verify
+
+        run_verify(config)
+
+
+def test_run_verify_telemetry_enabled_success(temp_workspace, verify_sessions_cleanup):
+    """run_verify should init telemetry and end loop with exit_code=0 on success."""
+    config, _ = temp_workspace
+
+    mock_agent = MagicMock()
+    mock_agent.invoke.return_value = {
+        "messages": [HumanMessage(content="init"), AIMessage(content="hi")]
+    }
+
+    with (
+        patch("builtins.input", side_effect=["exit"]),
+        patch("planner.cli_planning.setup_planning_agent", return_value=mock_agent),
+        patch(
+            "planner.cli_planning.create_target_file_tools",
+            return_value=(MagicMock(), MagicMock()),
+        ),
+        patch(
+            "planner.cli_planning.create_planning_tools",
+            return_value=(MagicMock(), MagicMock()),
+        ),
+        patch("planner.cli_planning.save_session"),
+        patch.dict(
+            "os.environ",
+            {"LANGFUSE_PUBLIC_KEY": "pk-test", "LANGFUSE_SECRET_KEY": "sk-test"},
+        ),
+        patch("planner.cli_planning.init_telemetry"),
+        patch("planner.cli_planning.start_orchestrator_loop"),
+        patch("planner.cli_planning.end_orchestrator_loop") as mock_end,
+    ):
+        from planner.cli_planning import run_verify
+
+        run_verify(config)
+
+    mock_end.assert_called_once_with(exit_code=0)
+
+
+def test_run_verify_telemetry_enabled_failure(temp_workspace, verify_sessions_cleanup):
+    """run_verify should call end_orchestrator_loop with exit_code=1 on exception."""
+    config, _ = temp_workspace
+
+    with (
+        patch("builtins.input"),
+        patch(
+            "planner.cli_planning.setup_planning_agent",
+            side_effect=RuntimeError("Agent setup failed"),
+        ),
+        patch(
+            "planner.cli_planning.create_target_file_tools",
+            return_value=(MagicMock(), MagicMock()),
+        ),
+        patch(
+            "planner.cli_planning.create_planning_tools",
+            return_value=(MagicMock(), MagicMock()),
+        ),
+        patch("planner.cli_planning.save_session"),
+        patch.dict(
+            "os.environ",
+            {"LANGFUSE_PUBLIC_KEY": "pk-test", "LANGFUSE_SECRET_KEY": "sk-test"},
+        ),
+        patch("planner.cli_planning.init_telemetry"),
+        patch("planner.cli_planning.start_orchestrator_loop"),
+        patch("planner.cli_planning.end_orchestrator_loop") as mock_end,
+    ):
+        from planner.cli_planning import run_verify
+
+        with pytest.raises(RuntimeError, match="Agent setup failed"):
+            run_verify(config)
+
+    mock_end.assert_called_once_with(exit_code=1)
+
+
+def test_console_logging_handler(capsys):
+    """ConsoleLoggingHandler methods should truncate output and log to console."""
+    from planner.cli_planning import ConsoleLoggingHandler
+
+    handler = ConsoleLoggingHandler()
+
+    # Test _truncate
+    long_text = "a" * 300
+    truncated = handler._truncate(long_text)
+    assert len(truncated) == 203
+    assert truncated.endswith("...")
+
+    short_text = "hello"
+    assert handler._truncate(short_text) == "hello"
+
+    # Test on_llm_start
+    serialized = {"kwargs": {"model": "test-model"}}
+    handler.on_llm_start(serialized, ["prompt"])
+    captured = capsys.readouterr()
+    assert "[Agent]: Thinking... (model: test-model)" in captured.out
+
+    # Test on_tool_start
+    serialized_tool = {"name": "test_tool"}
+    handler.on_tool_start(serialized_tool, "tool-input-text")
+    captured = capsys.readouterr()
+    assert "[Tool ▶]: test_tool(tool-input-text)" in captured.out
+
+    # Test on_tool_end
+    handler.on_tool_end("tool-output-text")
+    captured = capsys.readouterr()
+    assert "[Tool ◀]: tool-output-text" in captured.out
+
+
+def test_run_draft_success(temp_workspace):
+    """run_draft should initialize agent, read files, and trigger invoke with callback."""
+    config, workspace = temp_workspace
+    prd_file = workspace / "PRD.md"
+    prd_file.write_text("PRD content", encoding="utf-8")
+
+    mock_agent = MagicMock()
+    mock_agent.invoke.return_value = {
+        "messages": [AIMessage(content="Draft issues generated!")]
+    }
+
+    with (
+        patch("planner.cli_planning.setup_planning_agent", return_value=mock_agent),
+        patch(
+            "planner.cli_planning.create_target_file_tools",
+            return_value=(MagicMock(), MagicMock()),
+        ),
+        patch(
+            "planner.cli_planning.create_planning_tools",
+            return_value=(MagicMock(), MagicMock()),
+        ),
+        patch("planner.cli_planning.ConsoleLoggingHandler") as mock_handler_class,
+    ):
+        from planner.cli_planning import run_draft
+
+        run_draft(config)
+
+        mock_agent.invoke.assert_called_once()
+        args = mock_agent.invoke.call_args[0][0]
+        assert "messages" in args
+        assert "PRD Content" in args["messages"][0].content
+        mock_handler_class.assert_called_once()
+
+        kwargs = mock_agent.invoke.call_args[1]
+        assert "config" in kwargs
+        assert kwargs["config"] == {"callbacks": [mock_handler_class.return_value]}
+
+
+def test_main_refine_command():
+    """Main function should parse CLI options, verify rate limit quota, and run graph with callback."""
+    import logging
+    from planner.__main__ import main
+
+    mock_graph = MagicMock()
+    mock_graph.invoke.return_value = {"status": "success"}
+
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"resources": {"core": {"remaining": 100}}}
+
+    mock_session = MagicMock()
+    mock_session.get.return_value = mock_response
+
+    mock_config = MagicMock()
+    mock_config.github_repository = "owner/repo"
+    mock_config.sources.strict = False
+    mock_config.sources.domains = ["domain.com"]
+    mock_config.sources.repositories = ["owner/repo"]
+    mock_config.get_github_session.return_value = mock_session
+
+    with (
+        patch("sys.argv", ["planner", "refine", "--config", "test-sources.yaml"]),
+        patch("planner.__main__.AppConfig", return_value=mock_config),
+        patch("planner.__main__.graph", mock_graph),
+        patch("scripts.telemetry.init_telemetry") as mock_init,
+        patch("scripts.telemetry.start_orchestrator_loop") as mock_start,
+        patch("scripts.telemetry.end_orchestrator_loop") as mock_end,
+        patch("planner.__main__.glob.glob", return_value=["draft1.md"]),
+        patch("planner.__main__.Path.exists", return_value=True),
+        patch("logging.basicConfig") as mock_logging_config,
+        patch("planner.cli_planning.ConsoleLoggingHandler") as mock_handler_class,
+    ):
+        main()
+
+        mock_init.assert_called_once()
+        mock_start.assert_called_once()
+        mock_end.assert_called_once_with(exit_code=0)
+        mock_logging_config.assert_called_once_with(
+            level=logging.INFO,
+            format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+            datefmt="%H:%M:%S",
+        )
+        mock_handler_class.assert_called_once()
+        mock_graph.invoke.assert_called_once()
+        kwargs = mock_graph.invoke.call_args[1]
+        assert "config" in kwargs
+        assert kwargs["config"] == {"callbacks": [mock_handler_class.return_value]}
+
+
+def test_main_grill_command():
+    """Main function should parse grill command and delegate to run_grill."""
+    from planner.__main__ import main
+
+    with (
+        patch("sys.argv", ["planner", "grill", "--session-id", "test-session"]),
+        patch("planner.cli_planning.run_grill") as mock_run_grill,
+        patch("planner.__main__.AppConfig"),
+    ):
+        main()
+        mock_run_grill.assert_called_once()
+
+
+def test_main_verify_command():
+    """Main function should parse verify command and delegate to run_verify with session_id."""
+    from planner.__main__ import main
+
+    with (
+        patch("sys.argv", ["planner", "verify", "--session-id", "test-verify-session"]),
+        patch("planner.cli_planning.run_verify") as mock_run_verify,
+        patch("planner.__main__.AppConfig"),
+    ):
+        main()
+        mock_run_verify.assert_called_once_with(ANY, session_id="test-verify-session")

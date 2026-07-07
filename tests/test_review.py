@@ -257,3 +257,42 @@ def test_submit_github_review_author_comment(mock_post, mock_get, mock_env):
     # Even though we requested 'approve', since current_user == pr_author, it maps to 'COMMENT'
     assert payload["event"] == "COMMENT"
     assert payload["body"] == "This is some review body content"
+
+
+@patch("urllib.request.urlopen")
+def test_call_openrouter_api_timeout(mock_urlopen):
+    """call_openrouter_api should pass the timeout parameter to urlopen."""
+    from scripts.review import call_openrouter_api
+
+    mock_response = MagicMock()
+    mock_response.status = 200
+    mock_response.read.return_value = b'{"choices": []}'
+    mock_urlopen.return_value.__enter__.return_value = mock_response
+
+    call_openrouter_api(
+        model="test-model",
+        messages=[],
+        api_key="test-key",
+        timeout=45,
+    )
+
+    # Assert urllib.request.urlopen was called with timeout=45
+    called_args = mock_urlopen.call_args
+    assert called_args[1]["timeout"] == 45
+
+
+@patch("urllib.request.urlopen")
+def test_call_llm_for_review_empty_response_content(mock_urlopen):
+    """call_llm_for_review should raise Exception on empty response content."""
+    from scripts.review import call_llm_for_review
+
+    # Return 200 but with empty choices list or empty content message
+    empty_resp = '{"choices": [{"message": {"role": "assistant", "content": ""}}]}'
+    mock_response = MagicMock()
+    mock_response.status = 200
+    mock_response.read.return_value = empty_resp.encode("utf-8")
+    mock_urlopen.return_value.__enter__.return_value = mock_response
+
+    # It should raise an Exception because choices content is empty/blank
+    with pytest.raises(Exception, match="OpenRouter response message content is empty"):
+        call_llm_for_review("syntax_lint", "system prompt", "diff content", "api_key")
