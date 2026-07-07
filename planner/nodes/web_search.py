@@ -1,13 +1,11 @@
-import os
 import json
 import re
 import logging
 from typing import Dict, Any
 from langchain_core.messages import SystemMessage, HumanMessage
 from planner.state import RefinementState
-from langchain_openai import ChatOpenAI
 from scripts.telemetry import orchestrator_phase
-from planner.config import get_model, AppConfig
+from planner.config import AppConfig, get_llm
 from planner.tools.research import fetch_allowed_url
 
 
@@ -45,14 +43,8 @@ def web_search_node(state: RefinementState) -> Dict[str, Any]:
             logger.info("No search queries generated. Skipping search.")
             return {"search_results": [], "status": "success"}
 
-        # Instantiate LangChain ChatOpenAI client configured for OpenRouter
-        model_name = get_model("web_search")
-        model = ChatOpenAI(
-            model=model_name,
-            temperature=0.0,
-            openai_api_base="https://openrouter.ai/api/v1",
-            openai_api_key=os.getenv("OPENROUTER_API_KEY"),
-        )
+        # Instantiate LangChain client configured for OpenRouter using get_llm
+        model = get_llm("web_search")
 
         # Build tool definition dynamically
         search_params = state.get("search_params") or {}
@@ -138,8 +130,16 @@ def web_search_node(state: RefinementState) -> Dict[str, Any]:
                 completion_tokens = token_usage.get("completion_tokens", 0)
 
             # Extract and parse the JSON block of search results
-            assert isinstance(response.content, str)
-            json_text = extract_json_block(response.content)
+            text_content = ""
+            if isinstance(response.content, str):
+                text_content = response.content
+            elif isinstance(response.content, list):
+                for block in response.content:
+                    if isinstance(block, dict) and block.get("type") == "text":
+                        text_content += block.get("text", "")
+                    elif isinstance(block, str):
+                        text_content += block
+            json_text = extract_json_block(text_content)
             parsed_results = json.loads(json_text)
 
             if isinstance(parsed_results, list):

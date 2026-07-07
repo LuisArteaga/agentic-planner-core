@@ -1,12 +1,11 @@
-import os
 import json
 import logging
 from typing import Dict, Any
 from langchain_core.messages import SystemMessage, HumanMessage
 from planner.state import RefinementState
-from langchain_openai import ChatOpenAI
 from scripts.telemetry import orchestrator_phase
-from planner.config import get_model
+from planner.config import get_llm
+
 
 logger = logging.getLogger("planner.nodes.analyze_sources")
 
@@ -26,14 +25,9 @@ def analyze_sources_node(state: RefinementState) -> Dict[str, Any]:
                 "At least one source must be defined."
             )
 
-        # Instantiate LangChain ChatOpenAI client configured for OpenRouter
-        model_name = get_model("analyze_sources")
-        model = ChatOpenAI(
-            model=model_name,
-            temperature=0.0,
-            openai_api_base="https://openrouter.ai/api/v1",
-            openai_api_key=os.getenv("OPENROUTER_API_KEY"),
-        )
+        # Instantiate LangChain client configured for OpenRouter using get_llm
+        model = get_llm("analyze_sources")
+        model_name = model.model_name
 
         # Construct prompt
         system_instruction = (

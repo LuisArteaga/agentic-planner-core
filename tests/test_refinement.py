@@ -18,11 +18,11 @@ class RefinementNodesTests(unittest.TestCase):
         os.environ.clear()
         os.environ.update(self.original_env)
 
-    @patch("planner.nodes.analyze_sources.ChatOpenAI")
-    def test_analyze_sources_strict_mode(self, mock_chat_router):
+    @patch("planner.nodes.analyze_sources.get_llm")
+    def test_analyze_sources_strict_mode(self, mock_get_llm):
         # Setup mock model output
         mock_instance = MagicMock()
-        mock_chat_router.return_value = mock_instance
+        mock_get_llm.return_value = mock_instance
 
         mock_response = MagicMock(spec=AIMessage)
         mock_response.content = '{"keywords": ["auth", "jwt"], "suggested_sources": ["malicious-domain.com", "other/repo"]}'
@@ -61,10 +61,10 @@ class RefinementNodesTests(unittest.TestCase):
         self.assertEqual(output["prompt_tokens"], 15)
         self.assertEqual(output["completion_tokens"], 20)
 
-    @patch("planner.nodes.analyze_sources.ChatOpenAI")
-    def test_analyze_sources_non_strict_mode(self, mock_chat_router):
+    @patch("planner.nodes.analyze_sources.get_llm")
+    def test_analyze_sources_non_strict_mode(self, mock_get_llm):
         mock_instance = MagicMock()
-        mock_chat_router.return_value = mock_instance
+        mock_get_llm.return_value = mock_instance
 
         mock_response = MagicMock(spec=AIMessage)
         mock_response.content = '{"keywords": ["auth"], "suggested_sources": ["example.org", "langchain-ai/langgraph", "github.com/SWE-agent/SWE-agent"]}'
@@ -99,10 +99,10 @@ class RefinementNodesTests(unittest.TestCase):
         self.assertIn("github.com/langchain-ai/langgraph", output["allowed_domains"])
         self.assertIn("github.com/swe-agent/swe-agent", output["allowed_domains"])
 
-    @patch("planner.nodes.web_search.ChatOpenAI")
-    def test_web_search_execution(self, mock_chat_router):
+    @patch("planner.nodes.web_search.get_llm")
+    def test_web_search_execution(self, mock_get_llm):
         mock_instance = MagicMock()
-        mock_chat_router.return_value = mock_instance
+        mock_get_llm.return_value = mock_instance
 
         mock_response = MagicMock(spec=AIMessage)
         # Model returns JSON block of results as instructed
@@ -162,11 +162,73 @@ class RefinementNodesTests(unittest.TestCase):
             ["github.com/langchain-ai/langgraph"],
         )
 
+    @patch("planner.nodes.web_search.get_llm")
+    def test_web_search_execution_with_list_content(self, mock_get_llm):
+        mock_instance = MagicMock()
+        mock_get_llm.return_value = mock_instance
+
+        mock_response = MagicMock(spec=AIMessage)
+        # Model returns JSON block inside a list of dict blocks
+        mock_response.content = [
+            {
+                "type": "reasoning",
+                "content": [{"text": "Synthesizing search queries..."}],
+            },
+            {
+                "type": "text",
+                "text": (
+                    "Based on research:\n"
+                    "```json\n"
+                    "[\n"
+                    "  {\n"
+                    '    "title": "LangGraph Docs",\n'
+                    '    "url": "https://github.com/langchain-ai/langgraph",\n'
+                    '    "snippet": "LangGraph is a library for building stateful, multi-actor applications with LLMs."\n'
+                    "  }\n"
+                    "]\n"
+                    "```"
+                ),
+            },
+        ]
+        mock_response.response_metadata = {
+            "token_usage": {"prompt_tokens": 100, "completion_tokens": 150}
+        }
+
+        mock_bind = MagicMock()
+        mock_instance.bind.return_value = mock_bind
+        mock_bind.invoke.return_value = mock_response
+
+        state: RefinementState = {
+            "draft_issue_content": "Some draft",
+            "strict_mode": True,
+            "allowed_domains": ["github.com/langchain-ai/langgraph"],
+            "messages": [],
+            "keywords": ["langgraph"],
+            "search_queries": ["langgraph"],
+            "search_results": [],
+            "prompt_tokens": 10,
+            "completion_tokens": 20,
+            "model_name": "google/gemini-2.5-flash",
+            "status": "success",
+        }
+
+        output = web_search_node(state)
+
+        # Verify results parsing
+        self.assertEqual(len(output["search_results"]), 1)
+        self.assertEqual(output["search_results"][0]["title"], "LangGraph Docs")
+        self.assertEqual(
+            output["search_results"][0]["url"],
+            "https://github.com/langchain-ai/langgraph",
+        )
+        self.assertEqual(output["prompt_tokens"], 110)
+        self.assertEqual(output["completion_tokens"], 170)
+
     @patch("planner.nodes.web_search.fetch_allowed_url")
     @patch("planner.nodes.web_search.AppConfig")
-    @patch("planner.nodes.web_search.ChatOpenAI")
+    @patch("planner.nodes.web_search.get_llm")
     def test_web_search_with_pre_fetched_urls(
-        self, mock_chat_router, mock_config_class, mock_fetch
+        self, mock_get_llm, mock_config_class, mock_fetch
     ):
         # 1. Mock AppConfig to return custom urls
         mock_config = MagicMock()
@@ -182,7 +244,7 @@ class RefinementNodesTests(unittest.TestCase):
 
         # 3. Mock ChatOpenAI and response
         mock_instance = MagicMock()
-        mock_chat_router.return_value = mock_instance
+        mock_get_llm.return_value = mock_instance
 
         mock_response = MagicMock(spec=AIMessage)
         mock_response.content = (
@@ -267,10 +329,10 @@ class RefinementNodesTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             web_search_node(state)
 
-    @patch("planner.nodes.web_search.ChatOpenAI")
-    def test_web_search_execution_with_custom_params(self, mock_chat_router):
+    @patch("planner.nodes.web_search.get_llm")
+    def test_web_search_execution_with_custom_params(self, mock_get_llm):
         mock_instance = MagicMock()
-        mock_chat_router.return_value = mock_instance
+        mock_get_llm.return_value = mock_instance
 
         mock_response = MagicMock(spec=AIMessage)
         mock_response.content = "[]"

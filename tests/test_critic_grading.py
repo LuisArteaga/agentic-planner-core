@@ -22,10 +22,10 @@ class CriticGradingTests(unittest.TestCase):
         os.environ.clear()
         os.environ.update(self.original_env)
 
-    @patch("planner.nodes.propose_options.ChatOpenAI")
-    def test_propose_options_success(self, mock_chat_openai):
+    @patch("planner.nodes.propose_options.get_llm")
+    def test_propose_options_success(self, mock_get_llm):
         mock_instance = MagicMock()
-        mock_chat_openai.return_value = mock_instance
+        mock_get_llm.return_value = mock_instance
 
         mock_response = MagicMock(spec=AIMessage)
         mock_response.content = (
@@ -80,10 +80,10 @@ class CriticGradingTests(unittest.TestCase):
         self.assertEqual(output["completion_tokens"], 120)
         self.assertEqual(output["status"], "success")
 
-    @patch("planner.nodes.evaluate_grade.ChatOpenAI")
-    def test_evaluate_grade_success_first_attempt(self, mock_chat_openai):
+    @patch("planner.nodes.evaluate_grade.get_llm")
+    def test_evaluate_grade_success_first_attempt(self, mock_get_llm):
         mock_instance = MagicMock()
-        mock_chat_openai.return_value = mock_instance
+        mock_get_llm.return_value = mock_instance
 
         mock_structured_model = MagicMock()
         mock_instance.with_structured_output.return_value = mock_structured_model
@@ -151,10 +151,10 @@ class CriticGradingTests(unittest.TestCase):
         self.assertEqual(output["completion_tokens"], 100)
         self.assertEqual(output["status"], "success")
 
-    @patch("planner.nodes.evaluate_grade.ChatOpenAI")
-    def test_evaluate_grade_retry_loop_success(self, mock_chat_openai):
+    @patch("planner.nodes.evaluate_grade.get_llm")
+    def test_evaluate_grade_retry_loop_success(self, mock_get_llm):
         mock_instance = MagicMock()
-        mock_chat_openai.return_value = mock_instance
+        mock_get_llm.return_value = mock_instance
 
         mock_structured_model = MagicMock()
         mock_instance.with_structured_output.return_value = mock_structured_model
@@ -211,10 +211,10 @@ class CriticGradingTests(unittest.TestCase):
         self.assertEqual(output["status"], "success")
         self.assertEqual(mock_structured_model.invoke.call_count, 2)
 
-    @patch("planner.nodes.evaluate_grade.ChatOpenAI")
-    def test_evaluate_grade_retry_loop_exhausted_raises(self, mock_chat_openai):
+    @patch("planner.nodes.evaluate_grade.get_llm")
+    def test_evaluate_grade_retry_loop_exhausted_raises(self, mock_get_llm):
         mock_instance = MagicMock()
-        mock_chat_openai.return_value = mock_instance
+        mock_get_llm.return_value = mock_instance
 
         mock_structured_model = MagicMock()
         mock_instance.with_structured_output.return_value = mock_structured_model
@@ -254,5 +254,51 @@ class CriticGradingTests(unittest.TestCase):
 
         self.assertIn(
             "Critic evaluation failed to produce valid structured output after 3 attempts",
+            str(context.exception),
+        )
+
+    @patch("planner.nodes.evaluate_grade.get_llm")
+    def test_evaluate_grade_retry_loop_returns_none_raises(self, mock_get_llm):
+        mock_instance = MagicMock()
+        mock_get_llm.return_value = mock_instance
+
+        mock_structured_model = MagicMock()
+        mock_instance.with_structured_output.return_value = mock_structured_model
+
+        # Returns raw dict with parsed = None for all 3 attempts
+        mock_structured_model.invoke.return_value = {"parsed": None, "raw": MagicMock()}
+
+        state: RefinementState = {
+            "draft_issue_content": "Add DB persistence to logs.",
+            "strict_mode": True,
+            "allowed_domains": ["github.com"],
+            "messages": [],
+            "keywords": [],
+            "search_queries": [],
+            "search_results": [],
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "model_name": "google/gemini-2.5-flash",
+            "status": "success",
+            "proposed_options": [
+                {
+                    "choice_id": "option_1",
+                    "name": "DB wrapper",
+                    "description": "Complex DB wrapper",
+                }
+            ],
+            "best_option": {},
+            "all_grades": [],
+        }
+
+        with self.assertRaises(ValueError) as context:
+            evaluate_grade_node(state)
+
+        self.assertIn(
+            "Critic evaluation failed to produce valid structured output after 3 attempts",
+            str(context.exception),
+        )
+        self.assertIn(
+            "Parsed value was not a CriticEvaluation instance",
             str(context.exception),
         )

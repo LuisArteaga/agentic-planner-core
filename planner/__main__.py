@@ -2,13 +2,18 @@ import argparse
 import glob
 import logging
 import sys
+import warnings
 from pathlib import Path
+
 from planner.config import AppConfig
 from planner.state import AgentState
 from planner.refine_graph import graph
 from scripts.telemetry import (
     orchestrator_phase,
 )
+
+# Suppress harmless Pydantic serialization warnings from OpenRouter custom tools mismatch
+warnings.filterwarnings("ignore", message=".*PydanticSerializationUnexpectedValue.*")
 
 
 def main():

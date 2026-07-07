@@ -1,13 +1,11 @@
-import os
 import json
 import logging
 from typing import Dict, Any
 from langchain_core.messages import SystemMessage, HumanMessage
 from planner.state import RefinementState
-from langchain_openai import ChatOpenAI
 from planner.nodes.web_search import extract_json_block
 from scripts.telemetry import orchestrator_phase
-from planner.config import get_model
+from planner.config import get_llm
 
 logger = logging.getLogger("planner.nodes.propose_options")
 
@@ -20,14 +18,8 @@ def propose_options_node(state: RefinementState) -> Dict[str, Any]:
         draft_content = state.get("draft_issue_content", "")
         search_results = state.get("search_results", [])
 
-        # Instantiate LangChain ChatOpenAI client configured for OpenRouter
-        model_name = get_model("propose_options")
-        model = ChatOpenAI(
-            model=model_name,
-            temperature=0.0,
-            openai_api_base="https://openrouter.ai/api/v1",
-            openai_api_key=os.getenv("OPENROUTER_API_KEY"),
-        )
+        # Instantiate LangChain client configured for OpenRouter using get_llm
+        model = get_llm("propose_options")
 
         system_instruction = (
             "You are a Senior Software Architect. Your task is to analyze the draft issue description "

@@ -43,10 +43,10 @@ class ApplyDecisionTests(unittest.TestCase):
             (agdr_path / "0010-high.md").write_text("content", encoding="utf-8")
             self.assertEqual(get_next_agdr_number(agdr_path), 11)
 
-    @patch("planner.nodes.apply_decision.ChatOpenAI")
-    def test_apply_decision_requires_agdr(self, mock_chat_openai):
+    @patch("planner.nodes.apply_decision.get_llm")
+    def test_apply_decision_requires_agdr(self, mock_get_llm):
         mock_instance = MagicMock()
-        mock_chat_openai.return_value = mock_instance
+        mock_get_llm.return_value = mock_instance
 
         mock_structured_model = MagicMock()
         mock_instance.with_structured_output.return_value = mock_structured_model
@@ -165,10 +165,10 @@ class ApplyDecisionTests(unittest.TestCase):
                 "## Inspiration & Referenzen\n* https://sqlite.org", agdr_content
             )
 
-    @patch("planner.nodes.apply_decision.ChatOpenAI")
-    def test_apply_decision_no_agdr_and_no_changes(self, mock_chat_openai):
+    @patch("planner.nodes.apply_decision.get_llm")
+    def test_apply_decision_no_agdr_and_no_changes(self, mock_get_llm):
         mock_instance = MagicMock()
-        mock_chat_openai.return_value = mock_instance
+        mock_get_llm.return_value = mock_instance
 
         mock_structured_model = MagicMock()
         mock_instance.with_structured_output.return_value = mock_structured_model
@@ -235,8 +235,8 @@ class ApplyDecisionTests(unittest.TestCase):
             # Check NO AgDR directory / file exists
             self.assertFalse((workspace / "docs" / "agdr").exists())
 
-    @patch("planner.nodes.apply_decision.ChatOpenAI")
-    def test_apply_decision_path_traversal_raises(self, mock_chat_openai):
+    @patch("planner.nodes.apply_decision.get_llm")
+    def test_apply_decision_path_traversal_raises(self, mock_get_llm):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
             os.environ["GITHUB_WORKSPACE"] = str(workspace)
@@ -267,10 +267,10 @@ class ApplyDecisionTests(unittest.TestCase):
 
             self.assertIn("Path traversal detected", str(context.exception))
 
-    @patch("planner.nodes.apply_decision.ChatOpenAI")
-    def test_apply_decision_with_central_drafts_path_succeeds(self, mock_chat_openai):
+    @patch("planner.nodes.apply_decision.get_llm")
+    def test_apply_decision_with_central_drafts_path_succeeds(self, mock_get_llm):
         mock_instance = MagicMock()
-        mock_chat_openai.return_value = mock_instance
+        mock_get_llm.return_value = mock_instance
 
         mock_structured_model = MagicMock()
         mock_instance.with_structured_output.return_value = mock_structured_model
