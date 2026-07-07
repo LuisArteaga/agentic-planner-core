@@ -47,7 +47,7 @@ def test_valid_config(clean_env):
 
     yaml_data = {
         "strict": True,
-        "repositories": ["test/repo-allowed"],
+        "urls": ["https://github.com/test/repo-allowed"],
         "domains": ["example.com"],
     }
     temp_file = create_temp_yaml(yaml_data)
@@ -55,7 +55,7 @@ def test_valid_config(clean_env):
     config = AppConfig(sources_yaml_path=temp_file)
     assert config.openrouter_api_key == "test-key"
     assert config.sources.strict is True
-    assert "test/repo-allowed" in config.sources.repositories
+    assert "https://github.com/test/repo-allowed" in config.sources.urls
     assert "example.com" in config.sources.domains
 
     os.unlink(temp_file)
@@ -66,7 +66,7 @@ def test_strict_mode_without_sources(clean_env):
     os.environ["GH_PAT"] = "test-pat"
     os.environ["GITHUB_REPOSITORY"] = "test/repo"
 
-    yaml_data = {"strict": True, "repositories": [], "domains": []}
+    yaml_data = {"strict": True, "urls": [], "domains": []}
     temp_file = create_temp_yaml(yaml_data)
 
     with pytest.raises(ValueError) as exc:
@@ -291,7 +291,7 @@ def test_search_config_parsing_and_overlap(clean_env, caplog):
     # 1. Test standard parsing of search config
     yaml_data = {
         "strict": True,
-        "repositories": ["test/repo-allowed"],
+        "urls": ["https://github.com/test/repo-allowed"],
         "domains": ["example.com"],
         "search": {
             "engine": "exa",
@@ -317,7 +317,7 @@ def test_search_config_parsing_and_overlap(clean_env, caplog):
     # 2. Test overlap detection and warning logging
     yaml_data_overlap = {
         "strict": True,
-        "repositories": ["test/repo-allowed"],
+        "urls": ["https://github.com/test/repo-allowed"],
         "domains": ["example.com"],
         "search": {
             "engine": "auto",

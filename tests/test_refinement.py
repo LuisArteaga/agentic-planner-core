@@ -162,6 +162,77 @@ class RefinementNodesTests(unittest.TestCase):
             ["github.com/langchain-ai/langgraph"],
         )
 
+    @patch("planner.nodes.web_search.fetch_allowed_url")
+    @patch("planner.nodes.web_search.AppConfig")
+    @patch("planner.nodes.web_search.ChatOpenAI")
+    def test_web_search_with_pre_fetched_urls(
+        self, mock_chat_router, mock_config_class, mock_fetch
+    ):
+        # 1. Mock AppConfig to return custom urls
+        mock_config = MagicMock()
+        mock_config.sources.urls = ["https://python.langchain.com/docs/intro"]
+        mock_config_class.return_value = mock_config
+
+        # 2. Mock fetch_allowed_url to return a mock document
+        mock_fetch.return_value = {
+            "title": "LangChain Intro",
+            "url": "https://python.langchain.com/docs/intro",
+            "snippet": "Pre-fetched doc content",
+        }
+
+        # 3. Mock ChatOpenAI and response
+        mock_instance = MagicMock()
+        mock_chat_router.return_value = mock_instance
+
+        mock_response = MagicMock(spec=AIMessage)
+        mock_response.content = (
+            "```json\n"
+            "[\n"
+            "  {\n"
+            '    "title": "Search Result Title",\n'
+            '    "url": "https://example.com/search-result",\n'
+            '    "snippet": "Search result snippet"\n'
+            "  }\n"
+            "]\n"
+            "```"
+        )
+        mock_response.response_metadata = {
+            "token_usage": {"prompt_tokens": 10, "completion_tokens": 10}
+        }
+
+        mock_bind = MagicMock()
+        mock_instance.bind.return_value = mock_bind
+        mock_bind.invoke.return_value = mock_response
+
+        # 4. Define refinement state
+        state: RefinementState = {
+            "draft_issue_content": "Test draft",
+            "strict_mode": True,
+            "allowed_domains": ["example.com"],
+            "messages": [],
+            "keywords": ["test"],
+            "search_queries": ["test"],
+            "search_results": [],
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "model_name": "",
+            "status": "success",
+        }
+
+        # 5. Execute web_search_node
+        output = web_search_node(state)
+
+        # 6. Assertions
+        mock_fetch.assert_called_once_with(
+            mock_config, "https://python.langchain.com/docs/intro"
+        )
+        self.assertEqual(len(output["search_results"]), 2)
+        self.assertEqual(output["search_results"][0]["title"], "LangChain Intro")
+        self.assertEqual(
+            output["search_results"][0]["snippet"], "Pre-fetched doc content"
+        )
+        self.assertEqual(output["search_results"][1]["title"], "Search Result Title")
+
     def test_analyze_sources_strict_empty_domains_raises(self):
         state: RefinementState = {
             "draft_issue_content": "Some draft",

@@ -16,6 +16,12 @@ from langchain_core.messages import (
 from langchain_core.tools import tool
 from deepagents import create_deep_agent
 from planner.config import AppConfig, get_model
+from planner.tools.research import (
+    create_fetch_url_tool,
+    create_github_read_file_tool,
+    create_github_list_issues_tool,
+    create_github_get_releases_tool,
+)
 from scripts.telemetry import (
     init_telemetry,
     start_orchestrator_loop,
@@ -768,10 +774,24 @@ def run_verify(config: AppConfig, session_id: str = None):
         read_target_file, _ = create_target_file_tools(config)
         _, save_teaching_checklist = create_planning_tools(config)
 
+        # Research and GitHub API tools
+        fetch_url = create_fetch_url_tool(config)
+        github_read_file = create_github_read_file_tool(config)
+        github_list_issues = create_github_list_issues_tool(config)
+        github_get_releases = create_github_get_releases_tool(config)
+
         agent = setup_planning_agent(
             config,
             "wise-teacher",
-            [read_target_file, ask_question, save_teaching_checklist],
+            [
+                read_target_file,
+                ask_question,
+                save_teaching_checklist,
+                fetch_url,
+                github_read_file,
+                github_list_issues,
+                github_get_releases,
+            ],
         )
 
         if resumed_messages is not None:

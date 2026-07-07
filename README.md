@@ -45,7 +45,7 @@ cp .env.example .env
 ```
 Variables inside `.env`:
 * `OPENROUTER_API_KEY`: Your OpenRouter API Key
-* `GH_PAT`: Your GitHub Personal Access Token
+* `GH_PAT`: Your GitHub Personal Access Token (requires read permissions for repository contents, issues, and releases)
 * `GITHUB_REPOSITORY`: The target repository in the format `owner/repo`
 * `GITHUB_WORKSPACE`: The absolute path to the target repository on your system (or a relative path, which will be resolved relative to `.workspaces/` in the project root)
 * `AGENT_MODEL`: (Optional) The global fallback model to use (defaults to `z-ai/glm-5.2`)

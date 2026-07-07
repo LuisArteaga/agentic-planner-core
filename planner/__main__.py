@@ -102,14 +102,21 @@ def main():
 
                 print(f"Found {len(draft_files)} draft issues in {drafts_dir}")
 
-                # 2. Format whitelisted domains / repositories
+                # 2. Format whitelisted domains / urls
                 allowed_domains = []
                 for domain in config.sources.domains:
                     if domain:
                         allowed_domains.append(domain.strip().lower())
-                for repo in config.sources.repositories:
-                    if repo:
-                        allowed_domains.append(f"github.com/{repo.strip().lower()}")
+                from urllib.parse import urlparse
+
+                for url in config.sources.urls:
+                    if url:
+                        parsed = urlparse(url)
+                        domain = parsed.netloc
+                        if domain.startswith("www."):
+                            domain = domain[4:]
+                        if domain and domain not in allowed_domains:
+                            allowed_domains.append(domain.strip().lower())
 
                 # 3. Build initial state
                 search_params = {

@@ -995,7 +995,7 @@ def test_main_refine_command():
     mock_config.github_repository = "owner/repo"
     mock_config.sources.strict = False
     mock_config.sources.domains = ["domain.com"]
-    mock_config.sources.repositories = ["owner/repo"]
+    mock_config.sources.urls = ["https://github.com/owner/repo"]
     mock_config.get_github_session.return_value = mock_session
 
     with (
@@ -1022,8 +1022,10 @@ def test_main_refine_command():
         )
         mock_handler_class.assert_called_once()
         mock_graph.invoke.assert_called_once()
-        kwargs = mock_graph.invoke.call_args[1]
-        assert "config" in kwargs
+        args, kwargs = mock_graph.invoke.call_args
+        called_state = args[0]
+        assert "domain.com" in called_state["allowed_domains"]
+        assert "github.com" in called_state["allowed_domains"]
         assert kwargs["config"] == {"callbacks": [mock_handler_class.return_value]}
 
 
@@ -1051,3 +1053,31 @@ def test_main_verify_command():
     ):
         main()
         mock_run_verify.assert_called_once_with(ANY, session_id="test-verify-session")
+
+
+@patch("planner.cli_planning.setup_planning_agent")
+@patch("planner.cli_planning.run_interactive_console_loop")
+@patch("planner.cli_planning.load_or_select_session")
+def test_run_verify_registers_research_tools(mock_load, mock_console, mock_setup):
+    """run_verify should correctly wire direct fetch and github api tools into wise-teacher agent."""
+    from planner.cli_planning import run_verify
+    from unittest.mock import MagicMock
+
+    mock_config = MagicMock()
+    mock_config.github_workspace = "/workspace"
+    mock_config.github_repository = "owner/repo"
+    mock_config.sources.strict = False
+
+    mock_load.return_value = (None, "test-session")
+
+    run_verify(mock_config, session_id="test-session")
+
+    mock_setup.assert_called_once()
+    args, kwargs = mock_setup.call_args
+    self_config, skill, tools = args
+    tool_names = [t.name for t in tools]
+
+    assert "fetch_url_content" in tool_names
+    assert "read_github_file" in tool_names
+    assert "list_github_issues" in tool_names
+    assert "get_github_releases" in tool_names

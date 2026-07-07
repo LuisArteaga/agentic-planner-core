@@ -7,7 +7,9 @@ from langchain_core.messages import SystemMessage, HumanMessage
 from planner.state import RefinementState
 from langchain_openai import ChatOpenAI
 from scripts.telemetry import orchestrator_phase
-from planner.config import get_model
+from planner.config import get_model, AppConfig
+from planner.tools.research import fetch_allowed_url
+
 
 logger = logging.getLogger("planner.nodes.web_search")
 
@@ -100,6 +102,18 @@ def web_search_node(state: RefinementState) -> Dict[str, Any]:
         if allowed_domains:
             user_message += f"\nAllowed Domains/Repositories (Search is strictly restricted to these): {', '.join(allowed_domains)}"
 
+        config = AppConfig()
+        direct_results = []
+        if config.sources.urls:
+            logger.info(
+                f"Pre-fetching {len(config.sources.urls)} direct URLs from sources configuration..."
+            )
+            for url in config.sources.urls:
+                if url:
+                    res_dict = fetch_allowed_url(config, url)
+                    if res_dict:
+                        direct_results.append(res_dict)
+
         search_results = []
         prompt_tokens = 0
         completion_tokens = 0
@@ -148,7 +162,8 @@ def web_search_node(state: RefinementState) -> Dict[str, Any]:
             # Empty results fallback, do not crash
             search_results = []
 
-        # Cap final list to max 10 results to respect context window limits
+        # Combine direct results and search engine results, then cap to max 10
+        search_results = direct_results + search_results
         search_results = search_results[:10]
 
         return {

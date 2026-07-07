@@ -38,7 +38,7 @@ Dieses Dokument definiert die fachliche Terminologie für diesen Kontext. Es dar
 * **Definition**: Die Vorgabe von vertrauenswürdigen Informationsquellen und Rahmenbedingungen für die automatisierte Recherche. Sie enthält einen Sicherheitsmodus (Strict-Modus), um die Recherche streng auf die freigegebenen Quellen zu beschränken.
 * **Geschäftsregeln**: 
   * Im Strict-Modus werden Recherchen ausschließlich innerhalb der konfigurierten Quellen durchgeführt, um die Einschleusung unkontrollierter oder verfälschter Fremdinformationen zu verhindern.
-  * Ist der Strict-Modus aktiviert, müssen zwingend erlaubte Quellen (Repositories oder Domains) definiert sein; andernfalls bricht das System den Start mit einem Fehler ab.
+  * Ist der Strict-Modus aktiviert, müssen zwingend erlaubte Quellen (Domains oder Direkt-URLs) definiert sein; andernfalls bricht das System den Start mit einem Fehler ab.
 * **Synonyme / Abzugrenzende Begriffe**: Nicht zu verwechseln mit der allgemeinen Systemkonfiguration des Planners (wie Modellauswahl oder Zugriffsschlüssel).
 
 ### Agenten-Architekturentscheidung (Agent Decision Record - AgDR)
@@ -61,5 +61,14 @@ Dieses Dokument definiert die fachliche Terminologie für diesen Kontext. Es dar
 ### Sitzungs-Serialisierung (Session Serialization)
 * **Definition**: Der Prozess, bei dem der Verlauf einer Grill-Session inklusive aller Benutzer- und Agenten-Nachrichten in einem standardisierten JSON-Format persistiert wird.
 * **Geschäftsregeln**: Jede Nachricht wird mit ihrem Typ (`human`, `ai`, `system`, `tool`) und Inhalt serialisiert. Tool-Aufrufe (`tool_calls`) und Tool-Antworten werden mitgesichert, um die Interaktionshistorie vollständig abzubilden.
+
+### Direkt-URL-Abruf (Direct URL Fetch)
+* **Definition**: Der gezielte Abruf von Inhalten einer konkreten, vertrauenswürdigen Webadresse ohne die Einbindung externer Suchmaschinen.
+* **Geschäftsregeln**: Der Abruf erfolgt on-demand und wird im Sicherheitsmodus streng auf die vom Benutzer konfigurierten Ziel-Webadressen beschränkt.
+
+### Repository-API-Abruf (Repository API Retrieval)
+* **Definition**: Die Abfrage von Code-Dateien, Fehlerberichten (Issues) oder Produktveröffentlichungen (Releases) eines Softwareprojekts direkt über die Programmierschnittstelle der Hosting-Plattform.
+* **Geschäftsregeln**: Dient der präzisen und verzögerungsfreien Überprüfung des aktuellen Entwicklungsstands und von Code-Inhalten im Ziel-Repository oder in freigegebenen Fremdprojekten. Im Sicherheitsmodus wird der Zugriff streng auf das Ziel-Repository sowie auf die aus den freigegebenen Webadressen abgeleiteten Repositories beschränkt.
+
 
 

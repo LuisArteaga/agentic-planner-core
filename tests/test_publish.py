@@ -222,7 +222,7 @@ class MainRateLimitTests(unittest.TestCase):
         mock_config.github_workspace = "/workspace"
         mock_config.sources.strict = False
         mock_config.sources.domains = []
-        mock_config.sources.repositories = []
+        mock_config.sources.urls = []
         mock_config_class.return_value = mock_config
 
         # 2 draft files
