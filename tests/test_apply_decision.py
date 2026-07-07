@@ -266,3 +266,69 @@ class ApplyDecisionTests(unittest.TestCase):
                 apply_decision_node(state)
 
             self.assertIn("Path traversal detected", str(context.exception))
+
+    @patch("planner.nodes.apply_decision.ChatOpenAI")
+    def test_apply_decision_with_central_drafts_path_succeeds(self, mock_chat_openai):
+        mock_instance = MagicMock()
+        mock_chat_openai.return_value = mock_instance
+
+        mock_structured_model = MagicMock()
+        mock_instance.with_structured_output.return_value = mock_structured_model
+
+        mock_output = ApplyDecisionOutput(
+            requires_agdr=False,
+            agdr_title="",
+            y_statement="",
+            context_and_problem="",
+            drivers=[],
+            options_considered=[],
+            decision_rationale="",
+            consequences=AgDRConsequences(),
+            references=[],
+            updated_issue_content="## What to build\nOriginal content.",
+        )
+        mock_raw_msg = MagicMock()
+        mock_structured_model.invoke.return_value = {
+            "parsed": mock_output,
+            "raw": mock_raw_msg,
+        }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            os.environ["GITHUB_WORKSPACE"] = str(workspace)
+
+            # Create a temp file inside the actual central drafts directory for testing traversal
+            planner_root = Path(__file__).resolve().parents[1]
+            drafts_base = (planner_root / ".planner" / "drafts").resolve()
+            drafts_base.mkdir(parents=True, exist_ok=True)
+
+            temp_draft = tempfile.NamedTemporaryFile(
+                dir=str(drafts_base), suffix=".md", delete=False
+            )
+            try:
+                temp_draft.write(b"## What to build\nOriginal content.")
+                temp_draft.close()
+
+                state: RefinementState = {
+                    "draft_issue_content": "## What to build\nOriginal content.",
+                    "draft_issue_path": temp_draft.name,
+                    "strict_mode": True,
+                    "allowed_domains": ["github.com"],
+                    "messages": [],
+                    "keywords": [],
+                    "search_queries": [],
+                    "search_results": [],
+                    "prompt_tokens": 10,
+                    "completion_tokens": 20,
+                    "model_name": "google/gemini-2.5-flash",
+                    "status": "success",
+                    "proposed_options": [],
+                    "best_option": {"choice_id": "opt1", "score": 9.0},
+                    "all_grades": [],
+                }
+
+                output = apply_decision_node(state)
+                self.assertEqual(output["status"], "success")
+            finally:
+                if os.path.exists(temp_draft.name):
+                    os.remove(temp_draft.name)
