@@ -277,6 +277,11 @@ def call_llm_for_review(judge_key, system_prompt, diff, api_key):
                 elif "choices" not in parsed_body or not parsed_body["choices"]:
                     raise Exception("OpenRouter response missing choices block")
 
+                choice_msg = parsed_body["choices"][0].get("message", {})
+                content = choice_msg.get("content")
+                if not content or not content.strip():
+                    raise Exception("OpenRouter response message content is empty")
+
                 response_body = body
                 break
             except Exception as e:

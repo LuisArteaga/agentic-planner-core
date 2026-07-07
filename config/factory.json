@@ -10,12 +10,12 @@
     "web_search": { "model": "deepseek/deepseek-v4-flash", "routing": ["DeepInfra", "SiliconFlow", "Novita", "Parasail", "DeepSeek"], "options": { "thinking": "none" } },
     "propose_options": { "model": "deepseek/deepseek-v4-pro", "routing": ["DeepInfra", "SiliconFlow", "Novita", "Parasail", "DeepSeek"], "options": { "thinking": "max" } },
     "evaluate_grade": { "model": "z-ai/glm-5.2", "routing": ["Together", "DeepInfra", "Fireworks", "Parasail", "Inceptron"], "temperature": 0.0 },
-    "apply_decision": { "model": "moonshotai/kimi-k2.7-code", "routing": ["Inceptron", "Together", "SiliconFlow", "MoonshotAI"], "temperature": 0.0 },
-    "publish_issue": { "model": "moonshotai/kimi-k2.7-code", "routing": ["Inceptron", "Together", "SiliconFlow", "MoonshotAI"], "temperature": 0.0 }
+    "apply_decision": { "model": "moonshotai/kimi-k2.7-code", "routing": ["Together", "SiliconFlow", "MoonshotAI", "Inceptron"], "temperature": 0.0 },
+    "publish_issue": { "model": "moonshotai/kimi-k2.7-code", "routing": ["Together", "SiliconFlow", "MoonshotAI", "Inceptron"], "temperature": 0.0 }
   },
   "ci_cd_pr_judges": {
-    "syntax_lint": { "model": "moonshotai/kimi-k2.7-code", "routing": ["Inceptron", "Together", "SiliconFlow", "MoonshotAI"] },
-    "test_coverage": { "model": "moonshotai/kimi-k2.7-code", "routing": ["Inceptron", "Together", "SiliconFlow", "MoonshotAI"] },
+    "syntax_lint": { "model": "moonshotai/kimi-k2.7-code", "routing": ["Together", "SiliconFlow", "MoonshotAI", "Inceptron"] },
+    "test_coverage": { "model": "moonshotai/kimi-k2.7-code", "routing": ["Together", "SiliconFlow", "MoonshotAI", "Inceptron"] },
 
     "architecture": { "model": "z-ai/glm-5.2", "routing": ["Together", "DeepInfra", "Fireworks", "Parasail", "Inceptron"] },
     "security": { "model": "deepseek/deepseek-v4-pro", "routing": ["DeepInfra", "SiliconFlow", "Novita", "Parasail", "DeepSeek"], "options": { "thinking": "max" } }
