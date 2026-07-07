@@ -1,7 +1,7 @@
 import datetime
 import json
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, ANY
 
 import pytest
 from langchain_core.messages import (
@@ -997,9 +997,9 @@ def test_main_refine_command():
         patch("sys.argv", ["planner", "refine", "--config", "test-sources.yaml"]),
         patch("planner.__main__.AppConfig", return_value=mock_config),
         patch("planner.__main__.graph", mock_graph),
-        patch("planner.__main__.init_telemetry") as mock_init,
-        patch("planner.__main__.start_orchestrator_loop") as mock_start,
-        patch("planner.__main__.end_orchestrator_loop") as mock_end,
+        patch("scripts.telemetry.init_telemetry") as mock_init,
+        patch("scripts.telemetry.start_orchestrator_loop") as mock_start,
+        patch("scripts.telemetry.end_orchestrator_loop") as mock_end,
         patch("planner.__main__.glob.glob", return_value=["draft1.md"]),
         patch("planner.__main__.Path.exists", return_value=True),
         patch("logging.basicConfig"),
@@ -1023,3 +1023,16 @@ def test_main_grill_command():
     ):
         main()
         mock_run_grill.assert_called_once()
+
+
+def test_main_verify_command():
+    """Main function should parse verify command and delegate to run_verify with session_id."""
+    from planner.__main__ import main
+
+    with (
+        patch("sys.argv", ["planner", "verify", "--session-id", "test-verify-session"]),
+        patch("planner.cli_planning.run_verify") as mock_run_verify,
+        patch("planner.__main__.AppConfig"),
+    ):
+        main()
+        mock_run_verify.assert_called_once_with(ANY, session_id="test-verify-session")
