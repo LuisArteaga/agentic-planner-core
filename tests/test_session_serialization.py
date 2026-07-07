@@ -972,9 +972,14 @@ def test_run_draft_success(temp_workspace):
         assert "PRD Content" in args["messages"][0].content
         mock_handler_class.assert_called_once()
 
+        kwargs = mock_agent.invoke.call_args[1]
+        assert "config" in kwargs
+        assert kwargs["config"] == {"callbacks": [mock_handler_class.return_value]}
+
 
 def test_main_refine_command():
     """Main function should parse CLI options, verify rate limit quota, and run graph with callback."""
+    import logging
     from planner.__main__ import main
 
     mock_graph = MagicMock()
@@ -1002,14 +1007,24 @@ def test_main_refine_command():
         patch("scripts.telemetry.end_orchestrator_loop") as mock_end,
         patch("planner.__main__.glob.glob", return_value=["draft1.md"]),
         patch("planner.__main__.Path.exists", return_value=True),
-        patch("logging.basicConfig"),
+        patch("logging.basicConfig") as mock_logging_config,
+        patch("planner.cli_planning.ConsoleLoggingHandler") as mock_handler_class,
     ):
         main()
 
         mock_init.assert_called_once()
         mock_start.assert_called_once()
         mock_end.assert_called_once_with(exit_code=0)
+        mock_logging_config.assert_called_once_with(
+            level=logging.INFO,
+            format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+            datefmt="%H:%M:%S",
+        )
+        mock_handler_class.assert_called_once()
         mock_graph.invoke.assert_called_once()
+        kwargs = mock_graph.invoke.call_args[1]
+        assert "config" in kwargs
+        assert kwargs["config"] == {"callbacks": [mock_handler_class.return_value]}
 
 
 def test_main_grill_command():
