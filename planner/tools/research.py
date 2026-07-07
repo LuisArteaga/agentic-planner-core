@@ -5,6 +5,8 @@ import logging
 from typing import Optional
 import json
 import base64
+import socket
+import ipaddress
 from planner.config import AppConfig
 
 logger = logging.getLogger("planner.tools.research")
@@ -28,7 +30,40 @@ def is_domain_allowed(config: AppConfig, domain: str) -> bool:
     return domain in [d.strip().lower() for d in config.sources.domains if d]
 
 
+def is_ssrf_safe_url(url: str) -> bool:
+    """Checks if a URL is safe from SSRF (e.g., doesn't resolve to private or reserved IPs)."""
+    try:
+        parsed = urlparse(url)
+        hostname = parsed.hostname
+        if not hostname:
+            return False
+
+        # Resolve hostname to IP addresses
+        addr_infos = socket.getaddrinfo(hostname, None)
+        for info in addr_infos:
+            ip_str = info[4][0]
+            ip = ipaddress.ip_address(ip_str)
+            if (
+                ip.is_private
+                or ip.is_loopback
+                or ip.is_link_local
+                or ip.is_reserved
+                or ip.is_multicast
+                or ip.is_unspecified
+            ):
+                logger.warning(
+                    f"Blocked potentially unsafe or private IP address {ip_str} for URL '{url}'"
+                )
+                return False
+        return True
+    except Exception as e:
+        logger.warning(f"SSRF safety check failed for '{url}': {e}")
+        return False
+
+
 def is_url_allowed(config: AppConfig, url: str) -> bool:
+    if not is_ssrf_safe_url(url):
+        return False
     if not config.sources.strict:
         return True
     url_lower = url.strip().lower()

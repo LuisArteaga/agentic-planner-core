@@ -69,6 +69,10 @@ class ResearchToolsTests(unittest.TestCase):
         # Non-strict mode
         self.config.sources.strict = False
         self.assertTrue(is_url_allowed(self.config, "https://google.com"))
+        # Private IPs must still be blocked under non-strict mode
+        self.assertFalse(is_url_allowed(self.config, "http://127.0.0.1"))
+        self.assertFalse(is_url_allowed(self.config, "http://169.254.169.254"))
+        self.assertFalse(is_url_allowed(self.config, "http://localhost"))
 
     def test_is_repo_allowed(self):
         self.config.sources.strict = True
