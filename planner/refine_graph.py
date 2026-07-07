@@ -52,6 +52,7 @@ def run_refinement_subgraph_node(state: AgentState) -> dict:
         "draft_issue_path": str(draft_path),
         "strict_mode": state.get("strict_mode", True),
         "allowed_domains": state.get("allowed_domains", []),
+        "search_params": state.get("search_params", {}),
         "messages": [],
         "keywords": [],
         "search_queries": [],

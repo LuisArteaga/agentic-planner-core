@@ -9,6 +9,7 @@ class RefinementState(TypedDict, total=False):
     draft_issue_path: str
     strict_mode: bool
     allowed_domains: List[str]
+    search_params: Dict[str, Any]
 
     # Message History for LLM tool invocation & response
     messages: List[Any]
@@ -44,6 +45,7 @@ class AgentState(TypedDict, total=False):
     # Configuration
     strict_mode: bool
     allowed_domains: List[str]
+    search_params: Dict[str, Any]
 
     # Overall status
     status: str

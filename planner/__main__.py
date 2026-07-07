@@ -112,11 +112,20 @@ def main():
                         allowed_domains.append(f"github.com/{repo.strip().lower()}")
 
                 # 3. Build initial state
+                search_params = {
+                    "engine": config.sources.search.engine,
+                    "search_context_size": config.sources.search.search_context_size,
+                    "max_results": config.sources.search.max_results,
+                    "max_total_results": config.sources.search.max_total_results,
+                    "excluded_domains": config.sources.search.excluded_domains,
+                }
+
                 initial_state: AgentState = {
                     "draft_issues": draft_files,
                     "current_issue_index": 0,
                     "strict_mode": config.sources.strict,
                     "allowed_domains": allowed_domains,
+                    "search_params": search_params,
                     "status": "idle",
                 }
 

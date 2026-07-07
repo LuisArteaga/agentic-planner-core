@@ -5,3 +5,11 @@ repositories:
 domains:
   - arxiv.org
   - dl.acm.org
+
+search:
+  engine: auto
+  search_context_size: short
+  max_results: 3
+  max_total_results: 10
+  excluded_domains:
+    - reddit.com
