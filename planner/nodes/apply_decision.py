@@ -115,14 +115,9 @@ def apply_decision_node(state: RefinementState) -> Dict[str, Any]:
 
         workspace_dir = Path(os.environ.get("GITHUB_WORKSPACE", os.getcwd())).resolve()
 
-        # Resolve and validate draft issue path to prevent Path Traversal
-        draft_path = Path(draft_path_str).resolve()
-        try:
-            draft_path.relative_to(workspace_dir)
-        except ValueError:
-            raise ValueError(
-                f"Path traversal detected: draft issue path {draft_path} is outside GITHUB_WORKSPACE {workspace_dir}"
-            )
+        from planner.utils import validate_draft_path
+
+        draft_path = validate_draft_path(draft_path_str, workspace_dir)
 
         if not draft_path.exists():
             raise FileNotFoundError(f"Draft issue file does not exist: {draft_path}")

@@ -95,15 +95,11 @@ def publish_issue_node(state: RefinementState) -> Dict[str, Any]:
         logger.debug(f"Applying artificial jitter of {jitter:.2f} seconds...")
         time.sleep(jitter)
 
-        # 4. Validate and remove local draft file to prevent Path Traversal
+        # 4. Validate and remove local draft file to prevent Path Traversal.
         if filepath:
-            draft_path = Path(filepath).resolve()
-            try:
-                draft_path.relative_to(workspace_dir)
-            except ValueError:
-                raise ValueError(
-                    f"Path traversal detected: draft issue path {draft_path} is outside GITHUB_WORKSPACE {workspace_dir}"
-                )
+            from planner.utils import validate_draft_path
+
+            draft_path = validate_draft_path(filepath, workspace_dir)
 
             if draft_path.exists():
                 try:
