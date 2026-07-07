@@ -59,14 +59,18 @@ als einzigen Recherche-Kanal. Für diesen Kanal wird ein **begrenztes Pre-fetchi
   (`fetch_allowed_url`).
 - Die Ergebnisse werden als erste Einträge in `search_results` **vorangestellt** (nicht ins
   System-Prompt injiziert).
-- `search_results` ist auf maximal 10 Einträge gekappt (Snippets auf 300 Zeichen), was
-  Token-Bloat begrenzt.
+- `search_results` ist auf maximal 10 Einträge gekappt.
+- **Snippet-Limits nach Quelle:** Direkt-URL-Inhalte (via `fetch_allowed_url`) werden auf
+  2000 Zeichen gekürzt — diese Quellen sind gezielt konfigurierte Dokumentations-URLs, die
+  einen längeren Auszug rechtfertigen. Web-Suchergebnis-Snippets werden auf 300 Zeichen
+  gekürzt (flüchtige Treffer, nur Orientierung nötig).
 
 **Abgrenzung zu Option 1 (abgelehnt):** Option 1 injizierte alle URL-Inhalte statisch ins
 System-Prompt bei jedem LLM-Call — unabhängig von Relevanz und ohne Größenbeschränkung.
 Das bounded Pre-fetching im `web_search_node` ist grundsätzlich verschieden: es ist auf den
-Refinement-Schritt begrenzt, durch die 10er-Gesamtgrenze und 300-Zeichen-Snippets in der
-Größe kontrolliert und wird nur ausgeführt, wenn `sources.urls` konfiguriert sind.
+Refinement-Schritt begrenzt, durch die 10er-Gesamtgrenze kontrolliert, differenziert nach
+Quellentyp begrenzt (2000 Zeichen für konfigurierte Direkt-URLs, 300 Zeichen für
+Websuch-Treffer) und wird nur ausgeführt, wenn `sources.urls` konfiguriert sind.
 
 ### Konsequenzen
 * **Positiv**:
