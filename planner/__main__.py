@@ -16,7 +16,6 @@ from scripts.telemetry import (
 warnings.filterwarnings("ignore", message=".*PydanticSerializationUnexpectedValue.*")
 
 
-
 def main():
     parser = argparse.ArgumentParser(
         description="agentic-planner-core CLI - Orchestrator for planning and issue refinement."
