@@ -44,6 +44,30 @@ In der `sources.yaml` wird die redundante `repositories`-Kategorie entfernt und 
 ## Entscheidung
 Wir wählen **Option 3**. Dies bietet dem Agenten maximale Flexibilität bei minimalem Kontext-Verbrauch. Die Verwaltung der Zugriffsrechte im Strict-Modus erfolgt sicher und dynamisch anhand der Benutzerkonfiguration.
 
+### Umsetzung nach Phase
+
+#### Verifikationsphase (`verify` / `wise-teacher`)
+Die vier On-Demand Micro-Tools (`Fetch_URL_Tool`, `read_github_file`, `list_github_issues`,
+`get_github_releases`) werden dem `wise-teacher`-Agenten in `run_verify` direkt als ausführbare
+Werkzeuge übergeben. Der Agent ruft sie bei Bedarf eigenständig auf.
+
+#### Verfeinerungsphase (`refine` / Refinement Graph)
+Der Refinement-Graph läuft autonom (ohne interaktive Tool-Calls) und nutzt den `web_search_node`
+als einzigen Recherche-Kanal. Für diesen Kanal wird ein **begrenztes Pre-fetching** eingesetzt:
+
+- Konfigurierte `sources.urls` werden beim Einstieg in `web_search_node` direkt abgerufen
+  (`fetch_allowed_url`).
+- Die Ergebnisse werden als erste Einträge in `search_results` **vorangestellt** (nicht ins
+  System-Prompt injiziert).
+- `search_results` ist auf maximal 10 Einträge gekappt (Snippets auf 300 Zeichen), was
+  Token-Bloat begrenzt.
+
+**Abgrenzung zu Option 1 (abgelehnt):** Option 1 injizierte alle URL-Inhalte statisch ins
+System-Prompt bei jedem LLM-Call — unabhängig von Relevanz und ohne Größenbeschränkung.
+Das bounded Pre-fetching im `web_search_node` ist grundsätzlich verschieden: es ist auf den
+Refinement-Schritt begrenzt, durch die 10er-Gesamtgrenze und 300-Zeichen-Snippets in der
+Größe kontrolliert und wird nur ausgeführt, wenn `sources.urls` konfiguriert sind.
+
 ### Konsequenzen
 * **Positiv**:
   * Massive Token- und Latenzersparnis bei bekannten Dokumentations-URLs und Code-Referenzen.
@@ -56,3 +80,4 @@ Wir wählen **Option 3**. Dies bietet dem Agenten maximale Flexibilität bei min
 ## Inspiration & Referenzen
 * GitHub REST-API Dokumentation für Repository-Inhalte, Issues und Releases.
 * LangChain Tool-Binding Best Practices für bedarfsgerechten Informationsabruf.
+
