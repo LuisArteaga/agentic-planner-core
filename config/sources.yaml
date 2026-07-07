@@ -1,6 +1,6 @@
 strict: true
 
-repositories: []
+urls: []
 
 domains:
   - arxiv.org

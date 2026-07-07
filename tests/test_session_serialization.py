@@ -995,7 +995,7 @@ def test_main_refine_command():
     mock_config.github_repository = "owner/repo"
     mock_config.sources.strict = False
     mock_config.sources.domains = ["domain.com"]
-    mock_config.sources.repositories = ["owner/repo"]
+    mock_config.sources.urls = ["https://github.com/owner/repo"]
     mock_config.get_github_session.return_value = mock_session
 
     with (

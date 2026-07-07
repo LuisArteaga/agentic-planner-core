@@ -52,15 +52,15 @@ class SourcesConfig(BaseModel):
     """Pydantic schema for parsing and validating sources.yaml configuration."""
 
     strict: bool = True
-    repositories: List[str] = Field(default_factory=list)
+    urls: List[str] = Field(default_factory=list)
     domains: List[str] = Field(default_factory=list)
     search: SearchParametersConfig = Field(default_factory=SearchParametersConfig)
 
     @model_validator(mode="after")
     def validate_strict_sources(self) -> "SourcesConfig":
-        if self.strict and not self.repositories and not self.domains:
+        if self.strict and not self.urls and not self.domains:
             raise ValueError(
-                "Strict-mode is enabled (strict: true), but both 'repositories' "
+                "Strict-mode is enabled (strict: true), but both 'urls' "
                 "and 'domains' are empty. At least one source must be defined."
             )
 
@@ -74,10 +74,7 @@ class SourcesConfig(BaseModel):
             self.search.excluded_domains = normalized
 
             whitelisted_domains = {d.strip().lower() for d in self.domains if d}
-            whitelisted_repos = {
-                f"github.com/{r.strip().lower()}" for r in self.repositories if r
-            }
-            whitelist_set = whitelisted_domains.union(whitelisted_repos)
+            whitelist_set = whitelisted_domains
 
             for ext in self.search.excluded_domains:
                 if ext in whitelist_set:
