@@ -162,6 +162,68 @@ class RefinementNodesTests(unittest.TestCase):
             ["github.com/langchain-ai/langgraph"],
         )
 
+    @patch("planner.nodes.web_search.get_llm")
+    def test_web_search_execution_with_list_content(self, mock_get_llm):
+        mock_instance = MagicMock()
+        mock_get_llm.return_value = mock_instance
+
+        mock_response = MagicMock(spec=AIMessage)
+        # Model returns JSON block inside a list of dict blocks
+        mock_response.content = [
+            {
+                "type": "reasoning",
+                "content": [{"text": "Synthesizing search queries..."}],
+            },
+            {
+                "type": "text",
+                "text": (
+                    "Based on research:\n"
+                    "```json\n"
+                    "[\n"
+                    "  {\n"
+                    '    "title": "LangGraph Docs",\n'
+                    '    "url": "https://github.com/langchain-ai/langgraph",\n'
+                    '    "snippet": "LangGraph is a library for building stateful, multi-actor applications with LLMs."\n'
+                    "  }\n"
+                    "]\n"
+                    "```"
+                ),
+            },
+        ]
+        mock_response.response_metadata = {
+            "token_usage": {"prompt_tokens": 100, "completion_tokens": 150}
+        }
+
+        mock_bind = MagicMock()
+        mock_instance.bind.return_value = mock_bind
+        mock_bind.invoke.return_value = mock_response
+
+        state: RefinementState = {
+            "draft_issue_content": "Some draft",
+            "strict_mode": True,
+            "allowed_domains": ["github.com/langchain-ai/langgraph"],
+            "messages": [],
+            "keywords": ["langgraph"],
+            "search_queries": ["langgraph"],
+            "search_results": [],
+            "prompt_tokens": 10,
+            "completion_tokens": 20,
+            "model_name": "google/gemini-2.5-flash",
+            "status": "success",
+        }
+
+        output = web_search_node(state)
+
+        # Verify results parsing
+        self.assertEqual(len(output["search_results"]), 1)
+        self.assertEqual(output["search_results"][0]["title"], "LangGraph Docs")
+        self.assertEqual(
+            output["search_results"][0]["url"],
+            "https://github.com/langchain-ai/langgraph",
+        )
+        self.assertEqual(output["prompt_tokens"], 110)
+        self.assertEqual(output["completion_tokens"], 170)
+
     @patch("planner.nodes.web_search.fetch_allowed_url")
     @patch("planner.nodes.web_search.AppConfig")
     @patch("planner.nodes.web_search.get_llm")
