@@ -181,6 +181,102 @@ class PublishNodeTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             publish_issue_node(state)
 
+    @patch("requests.Session")
+    def test_publish_issue_node_path_traversal_raises(self, mock_session_class):
+        mock_session = MagicMock()
+        mock_session_class.return_value = mock_session
+
+        # Mock responses to satisfy early parts of publish_issue_node
+        mock_label_res = MagicMock(status_code=200)
+        mock_issue_res = MagicMock(status_code=201)
+        mock_issue_res.json.return_value = {"number": 1, "html_url": "url"}
+        mock_session.get.return_value = mock_label_res
+        mock_session.post.return_value = mock_issue_res
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            os.environ["GITHUB_WORKSPACE"] = temp_dir
+
+            outside_path = "/etc/passwd"
+
+            state: RefinementState = {
+                "draft_issue_content": "some content",
+                "draft_issue_path": outside_path,
+                "strict_mode": False,
+                "allowed_domains": [],
+                "messages": [],
+                "keywords": [],
+                "search_queries": [],
+                "search_results": [],
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "model_name": "",
+                "status": "idle",
+                "proposed_options": [],
+                "best_option": {},
+                "all_grades": [],
+            }
+
+            with self.assertRaises(ValueError) as context:
+                with patch("planner.nodes.publish_issue.time.sleep"):
+                    publish_issue_node(state)
+
+            self.assertIn("Path traversal detected", str(context.exception))
+
+    @patch("requests.Session")
+    def test_publish_issue_node_with_central_drafts_path_succeeds(
+        self, mock_session_class
+    ):
+        mock_session = MagicMock()
+        mock_session_class.return_value = mock_session
+
+        # Mock responses to satisfy early parts of publish_issue_node
+        mock_label_res = MagicMock(status_code=200)
+        mock_issue_res = MagicMock(status_code=201)
+        mock_issue_res.json.return_value = {"number": 1, "html_url": "url"}
+        mock_session.get.return_value = mock_label_res
+        mock_session.post.return_value = mock_issue_res
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            os.environ["GITHUB_WORKSPACE"] = temp_dir
+
+            # Create a temp file inside the actual central drafts directory
+            planner_root = Path(__file__).resolve().parents[1]
+            drafts_base = (planner_root / ".planner" / "drafts").resolve()
+            drafts_base.mkdir(parents=True, exist_ok=True)
+
+            temp_draft = tempfile.NamedTemporaryFile(
+                dir=str(drafts_base), suffix=".md", delete=False
+            )
+            try:
+                temp_draft.write(b"# Test Issue\nThis is content")
+                temp_draft.close()
+
+                state: RefinementState = {
+                    "draft_issue_content": "# Test Issue\nThis is content",
+                    "draft_issue_path": temp_draft.name,
+                    "strict_mode": False,
+                    "allowed_domains": [],
+                    "messages": [],
+                    "keywords": [],
+                    "search_queries": [],
+                    "search_results": [],
+                    "prompt_tokens": 0,
+                    "completion_tokens": 0,
+                    "model_name": "",
+                    "status": "idle",
+                    "proposed_options": [],
+                    "best_option": {},
+                    "all_grades": [],
+                }
+
+                with patch("planner.nodes.publish_issue.time.sleep"):
+                    result = publish_issue_node(state)
+                self.assertEqual(result["status"], "success")
+                self.assertFalse(os.path.exists(temp_draft.name))
+            finally:
+                if os.path.exists(temp_draft.name):
+                    os.remove(temp_draft.name)
+
 
 class MasterGraphErrorHandlingTests(unittest.TestCase):
     @patch("planner.refine_graph.refine_subgraph")

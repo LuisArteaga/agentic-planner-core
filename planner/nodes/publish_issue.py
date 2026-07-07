@@ -96,32 +96,10 @@ def publish_issue_node(state: RefinementState) -> Dict[str, Any]:
         time.sleep(jitter)
 
         # 4. Validate and remove local draft file to prevent Path Traversal.
-        # Draft issues are stored centrally in the planner's own drafts directory,
-        # but we also support workspace-local drafts for tests.
         if filepath:
-            draft_path = Path(filepath).resolve()
-            planner_root = Path(__file__).resolve().parents[2]
-            drafts_base = (planner_root / ".planner" / "drafts").resolve()
+            from planner.utils import validate_draft_path
 
-            in_drafts = False
-            try:
-                draft_path.relative_to(drafts_base)
-                in_drafts = True
-            except ValueError:
-                pass
-
-            in_workspace = False
-            try:
-                draft_path.relative_to(workspace_dir)
-                in_workspace = True
-            except ValueError:
-                pass
-
-            if not (in_drafts or in_workspace):
-                raise ValueError(
-                    f"Path traversal detected: draft issue path {draft_path} is outside GITHUB_WORKSPACE {workspace_dir} "
-                    f"and planner drafts directory {drafts_base}"
-                )
+            draft_path = validate_draft_path(filepath, workspace_dir)
 
             if draft_path.exists():
                 try:
