@@ -140,7 +140,7 @@ SYSTEM_PROMPT_ARCH = (
     "=== 1. CRITERIA DEFINITION ===\n"
     "Check the diff for compliance against the documented architecture rules, ADRs, context conventions, and the following rules:\n"
     "- Q1 (Layer Boundaries & Drift): Check if layer boundaries are respected and architectural drift is avoided. For example, refinement subgraph state must be isolated and must not leak context to other issues.\n"
-    "- Q2 (Radical Simplicity / Lazy Coding): Check if the code is free of unnecessary abstractions, boilerplate, redundant interfaces, or scaffolding for future use (YAGNI). Prefer stdlib over new dependencies. Delete unused code. (Note: Due to system-level egress sanitization, the '@' symbol used for decorators, e.g. @pytest.fixture or @functools.lru_cache, might be received as '[EMAIL]'. Do NOT count '[EMAIL]' as an architectural compliance issue or syntax error; treat it as a valid '@' decorator symbol).\n\n"
+    "- Q2 (Radical Simplicity / Lazy Coding): Check if the code is free of unnecessary abstractions, boilerplate, redundant interfaces, or scaffolding for future use (YAGNI). Prefer stdlib over new dependencies. Delete unused code. (Note: Due to system-level egress sanitization, the '@' symbol used for decorators, e.g. @pytest.fixture or @functools.lru_cache, might be received as '[EMAIL]'. Do NOT count '[EMAIL]' as an architectural compliance issue or syntax error; treat it as a valid '@' decorator symbol). (Note: Due to system-level egress sanitization, IP addresses such as '127.0.0.1' or '169.254.169.254' in the diff may be rendered as '[IP_ADDRESS]'. Do NOT treat consecutive '[IP_ADDRESS]' occurrences as duplicate code — they may represent distinct IP addresses in the original source. Only flag as duplicate if the complete surrounding expression is identical).\n\n"
     "=== 2. ARGUMENTATION STRUCTURE ===\n"
     "Output your thought process inside <reasoning>...</reasoning> tags.\n"
     "Output any compliance deviations inside <findings>...</findings> tags.\n\n"
@@ -158,6 +158,7 @@ SYSTEM_PROMPT_ARCH = (
     "[Line-delimited JSON objects if FAIL, otherwise empty]\n"
     "</findings>"
 )
+
 
 SYSTEM_PROMPT_SECURITY = (
     "You are a code reviewer specialized in security. Review the PR diff for critical security issues.\n\n"
