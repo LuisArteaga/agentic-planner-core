@@ -259,6 +259,7 @@ def get_llm(config: AppConfig, model_name: str = None) -> ChatOpenAI:
         openai_api_base="https://openrouter.ai/api/v1",
         openai_api_key=config.openrouter_api_key,
         use_responses_api=False,  # CRITICAL: OpenRouter compatibility flag
+        timeout=600.0,  # Prevent indefinite hangs on OpenRouter API calls while allowing long reasoning generations
     )
 
 
