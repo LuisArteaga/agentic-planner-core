@@ -273,6 +273,7 @@ def test_get_llm_construction(clean_env):
             assert called_kwargs["openai_api_base"] == "https://openrouter.ai/api/v1"
             assert called_kwargs["openai_api_key"] == "test-key"
             assert called_kwargs["use_responses_api"] is False
+            assert called_kwargs["timeout"] == 600.0
 
             # Verify provider routing and thinking options are correctly mapped to extra_body
             extra_body = called_kwargs["model_kwargs"]["extra_body"]
@@ -337,3 +338,56 @@ def test_search_config_parsing_and_overlap(clean_env, caplog):
     assert any("Overlap detected: Domain 'example.com'" in w for w in warnings)
 
     os.unlink(temp_file_overlap)
+
+
+def test_get_github_session_timeout(clean_env):
+    os.environ["OPENROUTER_API_KEY"] = "test-key"
+    os.environ["GH_PAT"] = "test-pat"
+    os.environ["GITHUB_REPOSITORY"] = "test/repo"
+
+    from planner.config import AppConfig
+    import requests
+
+    config = AppConfig()
+    session = config.get_github_session()
+    assert isinstance(session, requests.Session)
+
+    # Verify that the session request method wraps calls and adds default timeout
+    from unittest.mock import patch, MagicMock
+
+    # Mock requests.Session.send method
+    with patch("requests.Session.send") as mock_send:
+        mock_send.return_value = MagicMock()
+        # Call session.get or session.post without timeout
+        session.get("https://api.github.com/some_endpoint")
+        mock_send.assert_called_once()
+        called_kwargs = mock_send.call_args[1]
+        assert called_kwargs["timeout"] == 60.0
+
+    # Verify that explicit timeout overrides the default
+    with patch("requests.Session.send") as mock_send:
+        mock_send.return_value = MagicMock()
+        session.get("https://api.github.com/some_endpoint", timeout=15.0)
+        mock_send.assert_called_once()
+        called_kwargs = mock_send.call_args[1]
+        assert called_kwargs["timeout"] == 15.0
+
+
+def test_cli_planning_get_llm_timeout(clean_env):
+    os.environ["OPENROUTER_API_KEY"] = "test-key"
+    os.environ["GH_PAT"] = "test-pat"
+    os.environ["GITHUB_REPOSITORY"] = "test/repo"
+
+    from planner.config import AppConfig
+    from planner.cli_planning import get_llm
+    from unittest.mock import patch, MagicMock
+
+    config = AppConfig()
+
+    with patch("planner.cli_planning.ChatOpenAI") as mock_chat_openai:
+        mock_chat_openai.return_value = MagicMock()
+        client = get_llm(config, model_name="test-model")
+        assert client is not None
+        mock_chat_openai.assert_called_once()
+        called_kwargs = mock_chat_openai.call_args[1]
+        assert called_kwargs["timeout"] == 600.0
