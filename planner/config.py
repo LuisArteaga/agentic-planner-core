@@ -174,6 +174,17 @@ class AppConfig:
             status_forcelist=[403, 429, 500, 502, 503, 504],
         )
         session.mount("https://", HTTPAdapter(max_retries=retries))
+
+        # Inject default timeout of 60 seconds for all session requests
+        orig_request = session.request
+
+        def request_with_timeout(*args, **kwargs):
+            if "timeout" not in kwargs:
+                kwargs["timeout"] = 60.0
+            return orig_request(*args, **kwargs)
+
+        session.request = request_with_timeout
+
         return session
 
 
@@ -428,4 +439,5 @@ def get_llm(phase_or_node: str) -> "ChatOpenAI":
         openai_api_key=api_key,
         use_responses_api=False,
         model_kwargs=model_kwargs,
+        timeout=600.0,  # Prevent indefinite hangs on OpenRouter API calls while allowing long reasoning generations
     )
