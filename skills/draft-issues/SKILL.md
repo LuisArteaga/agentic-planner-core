@@ -75,3 +75,16 @@ Every Draft Issue file MUST strictly follow this Markdown structure:
 * The `Acceptance criteria` section must contain the two standard checks:
   - `- [ ] All new code paths have test coverage`
   - `- [ ] Local checks pass`
+
+## Implementation-Ready Issue Structure (Refinement Output)
+
+A Draft Issue is the **lean, human-authored** input to the autonomous refinement phase. After refinement (`python -m planner refine`), each published issue becomes an **implementation-ready spec** that the downstream coding agent can implement without re-researching or re-deciding architecture.
+
+Refinement preserves and enriches every original section above, then **injects** the following additional sections (grounded in web search results and the Critic-graded options):
+
+* **`## Solution approach`** — The chosen implementation approach: name, rationale grounded in grading scores, and a one-line note on why the highest-scoring alternative was rejected (with its score). Links the AgDR if one was created.
+* **`## Implementation plan`** — An ordered, file-targeted list of steps. Each step names the exact target file path(s) (relative to the repository root) to create or modify and the precise change to make.
+* **`## Verified patterns & references`** — Syntax-verified code patterns, library usages, or API shapes from research, each with a citation URL. Canonical patterns to follow, not final code.
+* **`## Resolved ambiguities`** — Each ambiguity encountered during refinement, paired with its resolution and the industry standard/rationale cited.
+
+This mirrors GitHub Spec Kit's separation of *plan* and *tasks* from the coding agent's *implementation*: the planner emits specs only (no code, no branches in target repositories — see ADR-0001 and PRD AC1); it simply front-loads the engineering depth so execution needs no re-research.
