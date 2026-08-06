@@ -259,15 +259,15 @@ def test_get_llm_construction(clean_env):
             "options": {"thinking": "max"},
         }
 
-        # Mock ChatOpenAI to avoid real network/package instantiation overhead
-        with patch("planner.config.ChatOpenAI") as mock_chat_openai:
-            mock_chat_openai.return_value = MagicMock()
+        # Mock the OpenRouter-aware subclass to avoid real instantiation overhead
+        with patch("planner.config.OpenRouterAnnotationChatOpenAI") as mock_cls:
+            mock_cls.return_value = MagicMock()
 
             client = get_llm("draft")
             assert client is not None
 
-            mock_chat_openai.assert_called_once()
-            called_kwargs = mock_chat_openai.call_args[1]
+            mock_cls.assert_called_once()
+            called_kwargs = mock_cls.call_args[1]
             assert called_kwargs["model"] == "deepseek/deepseek-v4-pro"
             assert called_kwargs["temperature"] == 0.2
             assert called_kwargs["openai_api_base"] == "https://openrouter.ai/api/v1"
@@ -275,13 +275,14 @@ def test_get_llm_construction(clean_env):
             assert called_kwargs["use_responses_api"] is False
             assert called_kwargs["timeout"] == 600.0
 
-            # Verify provider routing and thinking options are correctly mapped to extra_body
-            extra_body = called_kwargs["model_kwargs"]["extra_body"]
+            # extra_body is passed as a first-class kwarg (NOT nested in model_kwargs)
+            extra_body = called_kwargs["extra_body"]
             assert extra_body["provider"] == {
                 "order": ["together", "novita"],
                 "allow_fallbacks": False,
             }
             assert extra_body["thinking"] == "max"
+            assert "extra_body" not in (called_kwargs.get("model_kwargs") or {})
 
 
 def test_search_config_parsing_and_overlap(clean_env, caplog):
@@ -391,3 +392,95 @@ def test_cli_planning_get_llm_timeout(clean_env):
         mock_chat_openai.assert_called_once()
         called_kwargs = mock_chat_openai.call_args[1]
         assert called_kwargs["timeout"] == 600.0
+
+
+def test_openrouter_chat_openai_captures_url_citation_annotations(clean_env):
+    """The subclass must preserve url_citation annotations that base ChatOpenAI drops.
+
+    Uses a plain-dict Chat Completions response (the override supports both dict
+    and typed responses) to exercise the same capture logic without coupling the
+    test to the OpenAI SDK's typed annotation models.
+    """
+    from pydantic import SecretStr
+    from planner.config import OpenRouterAnnotationChatOpenAI
+
+    llm = OpenRouterAnnotationChatOpenAI(
+        model="test-model",
+        api_key=SecretStr("k"),
+        base_url="http://x",
+        use_responses_api=False,
+    )
+    resp = {
+        "id": "c1",
+        "created": 1,
+        "model": "test-model",
+        "object": "chat.completion",
+        "choices": [
+            {
+                "index": 0,
+                "finish_reason": "stop",
+                "message": {
+                    "role": "assistant",
+                    "content": "Findings.",
+                    "annotations": [
+                        {
+                            "type": "url_citation",
+                            "url_citation": {
+                                "url": "https://example.com/a",
+                                "title": "A",
+                                "content": "snippet A",
+                                "start_index": 0,
+                                "end_index": 5,
+                            },
+                        }
+                    ],
+                },
+            }
+        ],
+    }
+
+    result = llm._create_chat_result(resp)
+    ai = result.generations[0].message
+    anns = ai.additional_kwargs.get("annotations")
+    assert anns is not None
+    assert len(anns) == 1
+    assert anns[0]["type"] == "url_citation"
+    assert anns[0]["url_citation"]["url"] == "https://example.com/a"
+
+
+def test_openrouter_chat_openai_extra_body_passed_directly(clean_env):
+    """extra_body must be a first-class kwarg, NOT nested under model_kwargs (Bug 2)."""
+    import warnings
+    from pydantic import SecretStr
+    from planner.config import OpenRouterAnnotationChatOpenAI
+
+    extra = {"provider": {"order": ["anthropic"], "allow_fallbacks": False}}
+    with warnings.catch_warnings():
+        warnings.simplefilter(
+            "error"
+        )  # the old model_kwargs approach raises UserWarning
+        llm = OpenRouterAnnotationChatOpenAI(
+            model="test-model",
+            api_key=SecretStr("k"),
+            base_url="http://x",
+            use_responses_api=False,
+            extra_body=extra,
+        )
+    assert llm.extra_body == extra
+    assert "extra_body" not in (llm.model_kwargs or {})
+
+
+def test_get_llm_returns_subclass_without_extra_body_in_model_kwargs(clean_env):
+    """get_llm returns the OpenRouter-aware subclass and never nests extra_body."""
+    os.environ["OPENROUTER_API_KEY"] = "test-key"
+    os.environ["GH_PAT"] = "test-pat"
+    os.environ["GITHUB_REPOSITORY"] = "test/repo"
+
+    import warnings
+    from planner.config import get_llm, OpenRouterAnnotationChatOpenAI
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        llm = get_llm("web_search")
+    assert isinstance(llm, OpenRouterAnnotationChatOpenAI)
+    assert "extra_body" not in (llm.model_kwargs or {})

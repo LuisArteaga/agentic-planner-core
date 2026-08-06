@@ -105,19 +105,25 @@ class RefinementNodesTests(unittest.TestCase):
         mock_get_llm.return_value = mock_instance
 
         mock_response = MagicMock(spec=AIMessage)
-        # Model returns JSON block of results as instructed
+        # Model returns prose synthesis; citations arrive as url_citation annotations
         mock_response.content = (
-            "Based on research:\n"
-            "```json\n"
-            "[\n"
-            "  {\n"
-            '    "title": "LangGraph Docs",\n'
-            '    "url": "https://github.com/langchain-ai/langgraph",\n'
-            '    "snippet": "LangGraph is a library for building stateful, multi-actor applications with LLMs."\n'
-            "  }\n"
-            "]\n"
-            "```"
+            "Based on research: LangGraph is a library for building stateful, "
+            "multi-actor applications with LLMs."
         )
+        mock_response.additional_kwargs = {
+            "annotations": [
+                {
+                    "type": "url_citation",
+                    "url_citation": {
+                        "url": "https://github.com/langchain-ai/langgraph",
+                        "title": "LangGraph Docs",
+                        "content": "LangGraph is a library for building stateful, multi-actor applications with LLMs.",
+                        "start_index": 0,
+                        "end_index": 10,
+                    },
+                }
+            ]
+        }
         mock_response.response_metadata = {
             "token_usage": {"prompt_tokens": 100, "completion_tokens": 150}
         }
@@ -168,7 +174,8 @@ class RefinementNodesTests(unittest.TestCase):
         mock_get_llm.return_value = mock_instance
 
         mock_response = MagicMock(spec=AIMessage)
-        # Model returns JSON block inside a list of dict blocks
+        # Model returns prose inside a list of content blocks; citations arrive
+        # as url_citation annotations (list content must not break parsing)
         mock_response.content = [
             {
                 "type": "reasoning",
@@ -177,19 +184,25 @@ class RefinementNodesTests(unittest.TestCase):
             {
                 "type": "text",
                 "text": (
-                    "Based on research:\n"
-                    "```json\n"
-                    "[\n"
-                    "  {\n"
-                    '    "title": "LangGraph Docs",\n'
-                    '    "url": "https://github.com/langchain-ai/langgraph",\n'
-                    '    "snippet": "LangGraph is a library for building stateful, multi-actor applications with LLMs."\n'
-                    "  }\n"
-                    "]\n"
-                    "```"
+                    "Based on research: LangGraph is a library for building "
+                    "stateful, multi-actor applications with LLMs."
                 ),
             },
         ]
+        mock_response.additional_kwargs = {
+            "annotations": [
+                {
+                    "type": "url_citation",
+                    "url_citation": {
+                        "url": "https://github.com/langchain-ai/langgraph",
+                        "title": "LangGraph Docs",
+                        "content": "LangGraph is a library for building stateful, multi-actor applications with LLMs.",
+                        "start_index": 0,
+                        "end_index": 10,
+                    },
+                }
+            ]
+        }
         mock_response.response_metadata = {
             "token_usage": {"prompt_tokens": 100, "completion_tokens": 150}
         }
@@ -247,17 +260,21 @@ class RefinementNodesTests(unittest.TestCase):
         mock_get_llm.return_value = mock_instance
 
         mock_response = MagicMock(spec=AIMessage)
-        mock_response.content = (
-            "```json\n"
-            "[\n"
-            "  {\n"
-            '    "title": "Search Result Title",\n'
-            '    "url": "https://example.com/search-result",\n'
-            '    "snippet": "Search result snippet"\n'
-            "  }\n"
-            "]\n"
-            "```"
-        )
+        mock_response.content = "Synthesized search findings."
+        mock_response.additional_kwargs = {
+            "annotations": [
+                {
+                    "type": "url_citation",
+                    "url_citation": {
+                        "url": "https://example.com/search-result",
+                        "title": "Search Result Title",
+                        "content": "Search result snippet",
+                        "start_index": 0,
+                        "end_index": 5,
+                    },
+                }
+            ]
+        }
         mock_response.response_metadata = {
             "token_usage": {"prompt_tokens": 10, "completion_tokens": 10}
         }
@@ -336,6 +353,7 @@ class RefinementNodesTests(unittest.TestCase):
 
         mock_response = MagicMock(spec=AIMessage)
         mock_response.content = "[]"
+        mock_response.additional_kwargs = {}
         mock_response.response_metadata = {
             "token_usage": {"prompt_tokens": 10, "completion_tokens": 15}
         }
@@ -380,6 +398,133 @@ class RefinementNodesTests(unittest.TestCase):
         self.assertEqual(tool_params["max_total_results"], 15)
         self.assertEqual(tool_params["allowed_domains"], ["arxiv.org"])
         self.assertEqual(tool_params["excluded_domains"], ["reddit.com"])
+
+    @patch("planner.nodes.web_search.AppConfig")
+    @patch("planner.nodes.web_search.get_llm")
+    def test_web_search_no_annotations_sets_failure_signal(
+        self, mock_get_llm, mock_config_class
+    ):
+        # An empty/unparseable OpenRouter response (no url_citation annotations)
+        # must NOT raise JSONDecodeError and must set an honest failure signal.
+        mock_config = MagicMock()
+        mock_config.sources.urls = []
+        mock_config_class.return_value = mock_config
+
+        mock_instance = MagicMock()
+        mock_get_llm.return_value = mock_instance
+
+        mock_response = MagicMock(spec=AIMessage)
+        mock_response.content = "Prose-only response with no JSON block."
+        mock_response.additional_kwargs = {}  # no annotations
+        mock_response.response_metadata = {
+            "token_usage": {"prompt_tokens": 5, "completion_tokens": 7}
+        }
+
+        mock_bind = MagicMock()
+        mock_instance.bind.return_value = mock_bind
+        mock_bind.invoke.return_value = mock_response
+
+        state: RefinementState = {
+            "draft_issue_content": "Some draft",
+            "strict_mode": True,
+            "allowed_domains": ["arxiv.org"],
+            "messages": [],
+            "keywords": ["test"],
+            "search_queries": ["test"],
+            "search_results": [],
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "model_name": "",
+            "status": "idle",
+        }
+
+        output = web_search_node(state)
+
+        # Degraded path is explicit and observable (not "success")
+        self.assertEqual(output["status"], "web_search_failed")
+        self.assertNotEqual(output["web_search_error"], "")
+        self.assertEqual(output["search_results"], [])
+        # Token usage is still tracked from the response
+        self.assertEqual(output["prompt_tokens"], 5)
+        self.assertEqual(output["completion_tokens"], 7)
+
+    @patch("planner.nodes.web_search.AppConfig")
+    @patch("planner.nodes.web_search.get_llm")
+    def test_web_search_invoke_exception_sets_failure_signal(
+        self, mock_get_llm, mock_config_class
+    ):
+        mock_config = MagicMock()
+        mock_config.sources.urls = []
+        mock_config_class.return_value = mock_config
+
+        mock_instance = MagicMock()
+        mock_get_llm.return_value = mock_instance
+
+        mock_bind = MagicMock()
+        mock_instance.bind.return_value = mock_bind
+        mock_bind.invoke.side_effect = RuntimeError("OpenRouter timeout")
+
+        state: RefinementState = {
+            "draft_issue_content": "Some draft",
+            "strict_mode": True,
+            "allowed_domains": ["arxiv.org"],
+            "messages": [],
+            "keywords": ["test"],
+            "search_queries": ["test"],
+            "search_results": [],
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "model_name": "",
+            "status": "idle",
+        }
+
+        output = web_search_node(state)
+
+        self.assertEqual(output["status"], "web_search_failed")
+        self.assertIn("OpenRouter timeout", output["web_search_error"])
+        self.assertEqual(output["search_results"], [])
+
+    def test_extract_citations_helper(self):
+        from planner.nodes.web_search import _extract_citations_from_annotations
+
+        annotations = [
+            {
+                "type": "url_citation",
+                "url_citation": {
+                    "url": "https://example.com/a",
+                    "title": "A",
+                    "content": "snippet A",
+                    "start_index": 0,
+                    "end_index": 2,
+                },
+            },
+            {"type": "other", "other": {"url": "https://example.com/skip"}},
+            {
+                "type": "url_citation",
+                "url_citation": {
+                    "url": "https://example.com/long",
+                    "title": "Long",
+                    "content": "x" * 400,
+                    "start_index": 0,
+                    "end_index": 2,
+                },
+            },
+            {"type": "url_citation", "url_citation": {"title": "No URL"}},
+        ]
+
+        citations = _extract_citations_from_annotations(annotations)
+        self.assertEqual(len(citations), 2)
+        self.assertEqual(citations[0]["title"], "A")
+        self.assertEqual(citations[0]["url"], "https://example.com/a")
+        self.assertEqual(citations[0]["snippet"], "snippet A")
+        # Non-url_citation entries and entries without a URL are skipped
+        # Over-long snippets are truncated to <= 300 chars
+        self.assertTrue(len(citations[1]["snippet"]) <= 300)
+        self.assertTrue(citations[1]["snippet"].endswith("..."))
+
+        # Empty/None input is safe
+        self.assertEqual(_extract_citations_from_annotations(None), [])
+        self.assertEqual(_extract_citations_from_annotations([]), [])
 
     @patch("planner.refine_graph.refine_subgraph")
     def test_master_graph_iteration(self, mock_subgraph):

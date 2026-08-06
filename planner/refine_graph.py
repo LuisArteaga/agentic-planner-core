@@ -61,6 +61,7 @@ def run_refinement_subgraph_node(state: AgentState) -> dict:
         "completion_tokens": 0,
         "model_name": "",
         "status": "idle",
+        "web_search_error": "",
         "proposed_options": [],
         "best_option": {},
         "all_grades": [],

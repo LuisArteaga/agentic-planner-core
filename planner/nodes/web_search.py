@@ -1,4 +1,3 @@
-import json
 import re
 import logging
 from typing import Dict, Any
@@ -22,6 +21,39 @@ def extract_json_block(text: str) -> str:
     if match:
         return match.group(1).strip()
     return text.strip()
+
+
+def _extract_citations_from_annotations(annotations: Any) -> list[Dict[str, Any]]:
+    """Derive structured search results from OpenRouter ``url_citation`` annotations.
+
+    OpenRouter surfaces web search results as ``url_citation`` entries in the
+    message ``annotations`` array (see
+    https://openrouter.ai/docs/guides/features/plugins/web-search#parsing-web-search-results).
+    Annotations may arrive as plain dicts or pydantic models depending on the
+    LangChain/OpenAI SDK version, so both are normalized to dicts here.
+    """
+    citations: list[Dict[str, Any]] = []
+    for ann in annotations or []:
+        if hasattr(ann, "model_dump"):
+            ann = ann.model_dump()
+        if not isinstance(ann, dict):
+            continue
+        if ann.get("type") != "url_citation":
+            continue
+        citation = ann.get("url_citation") or {}
+        if hasattr(citation, "model_dump"):
+            citation = citation.model_dump()
+        if not isinstance(citation, dict):
+            continue
+        url = citation.get("url")
+        if not url:
+            continue
+        title = citation.get("title") or "No Title"
+        snippet = citation.get("content") or ""
+        if len(snippet) > 300:
+            snippet = snippet[:297] + "..."
+        citations.append({"title": title, "url": url, "snippet": snippet})
+    return citations
 
 
 def web_search_node(state: RefinementState) -> Dict[str, Any]:
@@ -73,21 +105,15 @@ def web_search_node(state: RefinementState) -> Dict[str, Any]:
             tool_choice={"type": "openrouter:web_search"},
         )
 
-        # Instruct the model to perform the search and return structured output
+        # Instruct the model to perform the search and synthesize findings as prose.
+        # Structured results are NOT requested as a JSON block; they are derived from
+        # the url_citation annotations OpenRouter attaches to the response message.
         system_instruction = (
             "You are a technical researcher. You MUST use the openrouter:web_search tool "
             "to execute a search for the requested queries. Do not try to answer without using the tool.\n\n"
-            "After you perform the search and receive the results, synthesize your findings. "
-            "At the end of your response, you MUST append a JSON block representing the list of search results you found. "
-            "Citations and snippets must be truncated to be concise (max 300 chars per snippet).\n\n"
-            "The JSON block must start with ```json and end with ```, and look exactly like this:\n"
-            "[\n"
-            "  {\n"
-            '    "title": "Result Title",\n'
-            '    "url": "http://example.com/result",\n'
-            '    "snippet": "A brief summary of findings (max 300 chars)"\n'
-            "  }\n"
-            "]"
+            "After you perform the search and receive the results, synthesize your findings into a concise "
+            "prose summary and cite sources inline. Do not output a JSON block; the structured search "
+            "results are captured automatically from the tool's url_citation annotations."
         )
 
         user_message = f"Search Queries: {', '.join(queries)}"
@@ -110,6 +136,8 @@ def web_search_node(state: RefinementState) -> Dict[str, Any]:
         prompt_tokens = 0
         completion_tokens = 0
         messages = list(state.get("messages", []))
+        web_search_error = ""
+        status = "success"
 
         try:
             response = llm_with_tools.invoke(
@@ -119,7 +147,7 @@ def web_search_node(state: RefinementState) -> Dict[str, Any]:
                 ]
             )
 
-            # Save message history
+            # Save message history (prose synthesis is kept for downstream context)
             messages.append(HumanMessage(content=user_message))
             messages.append(response)
 
@@ -129,47 +157,38 @@ def web_search_node(state: RefinementState) -> Dict[str, Any]:
                 prompt_tokens = token_usage.get("prompt_tokens", 0)
                 completion_tokens = token_usage.get("completion_tokens", 0)
 
-            # Extract and parse the JSON block of search results
-            text_content = ""
-            if isinstance(response.content, str):
-                text_content = response.content
-            elif isinstance(response.content, list):
-                for block in response.content:
-                    if isinstance(block, dict) and block.get("type") == "text":
-                        text_content += block.get("text", "")
-                    elif isinstance(block, str):
-                        text_content += block
-            json_text = extract_json_block(text_content)
-            parsed_results = json.loads(json_text)
+            # Derive search results from OpenRouter url_citation annotations rather
+            # than a model-emitted JSON block. The annotations are surfaced onto
+            # additional_kwargs by the OpenRouter-aware ChatOpenAI subclass in get_llm.
+            annotations = getattr(response, "additional_kwargs", {}).get(
+                "annotations", []
+            )
+            search_results = _extract_citations_from_annotations(annotations)
 
-            if isinstance(parsed_results, list):
-                for item in parsed_results:
-                    if isinstance(item, dict) and "url" in item:
-                        # Truncate snippet to prevent bloating
-                        snippet = item.get("snippet", "")
-                        if len(snippet) > 300:
-                            snippet = snippet[:297] + "..."
-                        search_results.append(
-                            {
-                                "title": item.get("title", "No Title"),
-                                "url": item.get("url"),
-                                "snippet": snippet,
-                            }
-                        )
+            if not search_results:
+                logger.warning(
+                    "Web search returned no url_citation annotations; "
+                    "degrading with empty search results."
+                )
+                web_search_error = (
+                    "No url_citation annotations present in OpenRouter response."
+                )
+                status = "web_search_failed"
 
         except Exception as e:
-            logger.error(f"Error executing web search or parsing results: {e}")
-            # Empty results fallback, do not crash
+            logger.error(f"Error executing web search: {e}", exc_info=True)
             search_results = []
+            web_search_error = f"web_search execution failed: {e}"
+            status = "web_search_failed"
 
         # Combine direct results and search engine results, then cap to max 10
-        search_results = direct_results + search_results
-        search_results = search_results[:10]
+        search_results = (direct_results + search_results)[:10]
 
         return {
             "messages": messages,
             "search_results": search_results,
             "prompt_tokens": state.get("prompt_tokens", 0) + prompt_tokens,
             "completion_tokens": state.get("completion_tokens", 0) + completion_tokens,
-            "status": "success",
+            "status": status,
+            "web_search_error": web_search_error,
         }
