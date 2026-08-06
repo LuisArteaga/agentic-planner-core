@@ -19,6 +19,11 @@ Dieses Dokument definiert die fachliche Terminologie für diesen Kontext. Es dar
 * **Geschäftsregeln**: Jede Entwurfs-Aufgabe durchläuft die autonome Verfeinerungsphase (Recherche, Architekturabgleich, Umschreiben), bevor sie als offizielle Aufgabe freigegeben wird. Nach der Freigabe wird die temporäre Arbeitskopie entfernt.
 * **Synonyme / Abzugrenzende Begriffe**: Nicht zu verwechseln mit einer freigegebenen oder veröffentlichten Aufgabe.
 
+### Implementierungsbereite Aufgabe (Implementation-Ready Issue)
+* **Definition**: Eine verfeinerte, veröffentlichte Aufgabenspezifikation, die neben den ursprünglichen Abschnitten einen gewählten Lösungsansatz mit Begründung, einen dateipfadbezogenen Umsetzungsplan, geprüfte Code-Muster mit Quellenangaben sowie aufgelöste Mehrdeutigkeiten enthält — so dass das nachgelagerte Ausführungssystem ohne erneute Recherche oder Architekturentscheidungen implementieren kann.
+* **Geschäftsregeln**: Die zusätzlichen Abschnitte werden in der autonomen Verfeinerungsphase injiziert und auf Basis der Rechercheergebnisse und der Kritiker-Bewertung befüllt. Die Spezifikation enthält kanonische Muster und Zielorte, keinen fertigen Code und keine Feature-Branches (ADR-0001, PRD AC1).
+* **Synonyme / Abzugrenzende Begriffe**: Abzugrenzen von der schmaleren *Entwurfs-Aufgabe*, die nur die menschlich verfassten Basisabschnitte enthält.
+
 ### Interaktive Planungsphase (Interactive Planning Phase)
 * **Definition**: Der interaktive Prozess mit menschlicher Beteiligung (HITL), in dem Anforderungen definiert (PRD, Glossary, ADRs) und in vorläufige Entwurfs-Aufgaben (Draft Issues) aufgeteilt werden.
 * **Geschäftsregeln**: Wird durch den Benutzer in Kombination mit interaktiven Entwicklungs-Tools und Prompt-Skills ausgeführt. Die Phase endet, sobald die Entwurfs-Aufgaben auf der Festplatte abgelegt sind.

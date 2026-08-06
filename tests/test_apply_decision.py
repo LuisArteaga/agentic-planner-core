@@ -10,6 +10,17 @@ from planner.nodes.apply_decision import (
     ApplyDecisionOutput,
     AgDROption,
     AgDRConsequences,
+    IMPLEMENTATION_READY_SECTIONS,
+)
+
+
+# Canonical implementation-ready enriched content used by multiple tests.
+ENRICHED_ISSUE = (
+    "## What to build\nEnriched what to build.\n\n"
+    "## Solution approach\nChosen: SQLite (score 9.0); Redis rejected (7.5).\n\n"
+    "## Implementation plan\n1. Modify planner/nodes/cache.py to add the cache node.\n\n"
+    "## Verified patterns & references\n- pathlib.Path.glob (https://docs.python.org/3/library/pathlib.html).\n\n"
+    "## Resolved ambiguities\n- Cache TTL ambiguity resolved per Spec Kit task-template convention."
 )
 
 
@@ -78,7 +89,7 @@ class ApplyDecisionTests(unittest.TestCase):
                 negative=["Local file locks"],
             ),
             references=["https://sqlite.org"],
-            updated_issue_content="## What to build\nEnriched what to build.",
+            updated_issue_content=ENRICHED_ISSUE,
         )
         mock_raw_msg = MagicMock()
         mock_raw_msg.response_metadata = {
@@ -123,11 +134,11 @@ class ApplyDecisionTests(unittest.TestCase):
             self.assertEqual(output["completion_tokens"], 100)
             self.assertEqual(output["status"], "success")
 
-            # Check draft issue updated
-            self.assertEqual(
-                draft_issue.read_text(encoding="utf-8"),
-                "## What to build\nEnriched what to build.\n",
-            )
+            # Check draft issue updated with implementation-ready sections
+            written = draft_issue.read_text(encoding="utf-8")
+            self.assertEqual(written, ENRICHED_ISSUE + "\n")
+            for header, _ in IMPLEMENTATION_READY_SECTIONS:
+                self.assertIn(header, written)
 
             # Check AgDR created
             agdr_file = workspace / "docs" / "agdr" / "0001-use-sqlite-cache.md"
@@ -332,3 +343,20 @@ class ApplyDecisionTests(unittest.TestCase):
             finally:
                 if os.path.exists(temp_draft.name):
                     os.remove(temp_draft.name)
+
+    def test_implementation_ready_sections_contract(self):
+        """The refinement contract must require the four implementation-ready
+        sections so published issues are actionable without re-research."""
+        headers = [header for header, _ in IMPLEMENTATION_READY_SECTIONS]
+        self.assertEqual(
+            headers,
+            [
+                "## Solution approach",
+                "## Implementation plan",
+                "## Verified patterns & references",
+                "## Resolved ambiguities",
+            ],
+        )
+        # Each section must carry a non-empty description.
+        for header, desc in IMPLEMENTATION_READY_SECTIONS:
+            self.assertTrue(desc.strip(), f"Section {header} has no description")

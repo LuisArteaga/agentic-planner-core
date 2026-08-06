@@ -37,6 +37,55 @@ class AgDRConsequences(BaseModel):
     negative: List[str] = Field(default_factory=list, description="List of cons/risks.")
 
 
+# Implementation-ready sections the refinement must inject into every published
+# issue so the downstream coding agent can implement without re-researching or
+# re-deciding architecture. Inspired by GitHub Spec Kit's plan/tasks separation
+# (Constitution -> Specify -> Plan -> Tasks -> implementation by a coding agent).
+# The planner still emits SPECS ONLY (no code, no branches in target repos) per
+# ADR-0001 and PRD AC1; these sections front-load the engineering depth.
+IMPLEMENTATION_READY_SECTIONS: List[tuple[str, str]] = [
+    (
+        "## Solution approach",
+        "The chosen implementation approach: its name, a one-paragraph rationale grounded "
+        "in the Critic grading scores, and a one-line note on why the highest-scoring "
+        "alternative was rejected (with its score). Link the AgDR if one was created.",
+    ),
+    (
+        "## Implementation plan",
+        "An ordered, file-targeted list of concrete steps. Each step names the exact target "
+        "file path(s) to create or modify (relative to the repository root) and the precise "
+        "change to make. This is the path the coding agent follows without re-deciding.",
+    ),
+    (
+        "## Verified patterns & references",
+        "Syntax-verified code patterns, library usages, or API shapes drawn from the web "
+        "search results, each with a citation URL. Describe the canonical pattern to follow, "
+        "NOT the full final implementation.",
+    ),
+    (
+        "## Resolved ambiguities",
+        "Each ambiguity encountered during refinement, paired with its resolution and the "
+        "industry standard or rationale cited, so the coding agent does not re-litigate "
+        "decisions already made.",
+    ),
+]
+
+_IMPLEMENTATION_READY_SECTIONS_DESC = "\n".join(
+    f"- {header}: {desc}" for header, desc in IMPLEMENTATION_READY_SECTIONS
+)
+
+# Full description for the `updated_issue_content` Pydantic field.
+UPDATED_ISSUE_CONTENT_DESC = (
+    "Complete rewritten draft issue markdown. Preserve and enrich ALL original section headers. "
+    "Additionally ENSURE the following implementation-ready sections are present (insert them if "
+    "missing) and populate each with concrete, file-targeted detail grounded in the search results "
+    "and the chosen option:\n"
+    + _IMPLEMENTATION_READY_SECTIONS_DESC
+    + "\nDo NOT write final code - describe canonical patterns and target locations only. "
+    "If refinement yielded no new findings, keep this identical to the original content."
+)
+
+
 class ApplyDecisionOutput(BaseModel):
     """Pydantic model for structured decision output from LLM."""
 
@@ -74,9 +123,7 @@ class ApplyDecisionOutput(BaseModel):
         description="Citations, URLs, standard specs, or existing ADRs/AgDRs referenced. Empty if requires_agdr is false.",
     )
 
-    updated_issue_content: str = Field(
-        description="Complete rewritten draft issue markdown content, preserving all original headers and sections, but enriching them with research findings, grading reasons, and references/links to AgDRs."
-    )
+    updated_issue_content: str = Field(description=UPDATED_ISSUE_CONTENT_DESC)
 
 
 def get_next_agdr_number(agdr_dir: Path) -> int:
@@ -157,11 +204,21 @@ def apply_decision_node(state: RefinementState) -> Dict[str, Any]:
             "   - 'decision_rationale': Why the option was chosen and how it satisfies the drivers.\n"
             "   - 'consequences': Positive and negative consequences.\n"
             "   - 'references': Inspiration and web-search/code references.\n"
-            "3. Rewrite the draft issue content. You MUST strictly preserve all the original section headers and structure (e.g. ## What to build, ## Scope, ## Constraints, ## Edge cases, ## Acceptance criteria).\n"
-            "   Enrich the contents of these sections with:\n"
+            "3. Rewrite the draft issue into an IMPLEMENTATION-READY spec. Preserve and enrich all "
+            "original section headers (e.g. ## What to build, ## Scope, ## Constraints, ## Edge cases, "
+            "## Cross-cutting concerns, ## Acceptance criteria, ## Blocked by) with:\n"
             "   - Research findings (citing search results and URLs).\n"
             "   - Grading reasons and scores of the evaluated options.\n"
             "   - Clear references or links to any existing ADRs/AgDRs or the newly created AgDR.\n"
+            "   ADDITIONALLY ENSURE the following implementation-ready sections are present (insert them "
+            "if missing) and fill each with concrete, file-targeted detail grounded in the search results "
+            "and the chosen option. Do NOT write final code - describe canonical patterns and target "
+            "locations only:\n"
+            + "\n".join(
+                f"   - {header}: {desc}"
+                for header, desc in IMPLEMENTATION_READY_SECTIONS
+            )
+            + "\n"
             "4. If the refinement yielded no new findings or changes, keep 'updated_issue_content' exactly identical to the original content.\n"
         )
 
