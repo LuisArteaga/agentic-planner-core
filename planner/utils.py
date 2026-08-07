@@ -1,4 +1,21 @@
+import re
 from pathlib import Path
+
+
+def extract_json_block(text: str) -> str:
+    """Extract a JSON block from Markdown output.
+
+    Looks for a fenced ```json block first, then falls back to any array
+    pattern, finally returning the stripped text. Shared by nodes that parse
+    model-emitted structured output (e.g. ``propose_options``).
+    """
+    match = re.search(r"```json\s*(.*?)\s*```", text, re.DOTALL)
+    if match:
+        return match.group(1).strip()
+    match = re.search(r"(\[.*\])", text, re.DOTALL)
+    if match:
+        return match.group(1).strip()
+    return text.strip()
 
 
 def validate_draft_path(filepath: str, workspace_dir: Path) -> Path:

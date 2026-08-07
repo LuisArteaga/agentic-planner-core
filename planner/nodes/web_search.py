@@ -1,4 +1,3 @@
-import re
 import logging
 from typing import Dict, Any
 from langchain_core.messages import SystemMessage, HumanMessage
@@ -9,18 +8,6 @@ from planner.tools.research import fetch_allowed_url
 
 
 logger = logging.getLogger("planner.nodes.web_search")
-
-
-def extract_json_block(text: str) -> str:
-    """Helper to extract a JSON block from Markdown output."""
-    match = re.search(r"```json\s*(.*?)\s*```", text, re.DOTALL)
-    if match:
-        return match.group(1).strip()
-    # Fallback to look for array pattern if no markdown block
-    match = re.search(r"(\[.*\])", text, re.DOTALL)
-    if match:
-        return match.group(1).strip()
-    return text.strip()
 
 
 def _extract_citations_from_annotations(annotations: Any) -> list[Dict[str, Any]]:
