@@ -410,6 +410,57 @@ def get_model(phase_or_node: str) -> str:
     return resolve_model_config(phase_or_node)["model"]
 
 
+class OpenRouterAnnotationChatOpenAI(ChatOpenAI):
+    """``ChatOpenAI`` variant that preserves OpenRouter ``url_citation`` annotations.
+
+    langchain-openai discards ``choices[].message.annotations`` while converting a
+    Chat Completions response into an ``AIMessage``. OpenRouter surfaces web search
+    results exclusively through these ``url_citation`` annotations, so they must be
+    captured before the conversion drops them. This subclass copies the annotations
+    (normalized to plain dicts) onto the resulting
+    ``AIMessage.additional_kwargs["annotations"]``.
+
+    This addresses *result parsing*, which is orthogonal to [ADR-0003](../docs/adr/0003-openrouter-server-tools-binding.md)'s
+    decision: ADR-0003 rejected a custom ``bind_tools`` override for *tool binding*,
+    whereas this override only captures provider-supplied metadata that the base
+    integration throws away. The override is a no-op for responses without
+    annotations, so it is safe for every refinement node — only ``web_search`` reads them.
+    """
+
+    def _create_chat_result(
+        self,
+        response: Any,
+        generation_info: dict | None = None,
+    ) -> Any:
+        result = super()._create_chat_result(response, generation_info)
+        try:
+            message = (
+                response["choices"][0]["message"]
+                if isinstance(response, dict)
+                else response.choices[0].message
+            )
+            raw_annotations = (
+                message.get("annotations")
+                if isinstance(message, dict)
+                else getattr(message, "annotations", None)
+            ) or []
+            if raw_annotations and result.generations:
+                normalized = [
+                    ann.model_dump() if hasattr(ann, "model_dump") else ann
+                    for ann in raw_annotations
+                    if hasattr(ann, "model_dump") or isinstance(ann, dict)
+                ]
+                if normalized:
+                    result.generations[0].message.additional_kwargs["annotations"] = (
+                        normalized
+                    )
+        except Exception:
+            # Annotation capture must never break the LLM call; the web_search node
+            # handles the "no annotations" case explicitly via its status signal.
+            pass
+        return result
+
+
 def get_llm(phase_or_node: str) -> "ChatOpenAI":
     cfg = resolve_model_config(phase_or_node)
     model_name = cfg["model"]
@@ -419,8 +470,7 @@ def get_llm(phase_or_node: str) -> "ChatOpenAI":
 
     api_key = os.getenv("OPENROUTER_API_KEY")
 
-    model_kwargs: Dict[str, Any] = {}
-    extra_body = {}
+    extra_body: Dict[str, Any] = {}
     if routing:
         extra_body["provider"] = {
             "order": [r.lower() for r in routing],
@@ -429,15 +479,12 @@ def get_llm(phase_or_node: str) -> "ChatOpenAI":
     if options:
         extra_body.update(options)
 
-    if extra_body:
-        model_kwargs["extra_body"] = extra_body
-
-    return ChatOpenAI(
+    return OpenRouterAnnotationChatOpenAI(
         model=model_name,
         temperature=temperature,
         openai_api_base="https://openrouter.ai/api/v1",
         openai_api_key=api_key,
         use_responses_api=False,
-        model_kwargs=model_kwargs,
+        extra_body=extra_body or None,
         timeout=600.0,  # Prevent indefinite hangs on OpenRouter API calls while allowing long reasoning generations
     )

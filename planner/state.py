@@ -27,7 +27,13 @@ class RefinementState(TypedDict, total=False):
     model_name: str
 
     # Status track
-    status: str  # "success", "failed"
+    status: str  # "success", "failed", "web_search_failed"
+
+    # Durable web_search failure signal (set by the web_search node when the
+    # OpenRouter search returns no url_citation annotations or raises). Unlike
+    # ``status`` — which downstream nodes overwrite — this field persists for the
+    # whole subgraph run so monitoring can distinguish a degraded search.
+    web_search_error: str
 
     # Critic Grading fields
     proposed_options: List[Dict[str, Any]]
