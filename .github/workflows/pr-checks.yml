@@ -3,6 +3,7 @@ name: PR checks
 on:
   pull_request:
     types: [opened, synchronize, reopened]
+  workflow_dispatch: {}
 
 env:
   AGENT_MODE: ci
