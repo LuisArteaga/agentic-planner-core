@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 import json
 import datetime
@@ -6,7 +7,7 @@ import urllib.request
 import urllib.error
 import subprocess
 import time
-from typing import List, Tuple, Dict, Any
+from typing import List, Tuple, Dict, Any, Optional
 import requests
 
 # Add project root and scripts dir to sys.path
@@ -530,6 +531,176 @@ def load_architecture_context(workspace_dir: str) -> str:
     return "\n".join(context_lines)
 
 
+# --- Enclosing-Function Context Enrichment (ADR-0011) ---------------------
+#
+# Extends the raw `git diff` with the full body of the enclosing function/class
+# for every changed Python hunk. This gives the LLM PR judges enough semantic
+# context to avoid false positives caused by diff-only rendering artefacts
+# (e.g. GitHub IP anonymisation `127.0.0.1` -> `[IP_ADDRESS]`, see INC-001).
+#
+# Approach: stdlib `re` line-walking (parse `@@` hunks, walk up to the nearest
+# `def`/`class`, walk down to the next `def`/`class` at the same or lower
+# indentation). AST + call-graph (CodeRabbit approach) was intentionally
+# rejected for now as over-engineering (ADR-0011, Option 3 / YAGNI).
+
+_CONTEXT_CHAR_LIMIT_PER_FILE = 15000
+
+# `+++ b/<path>` — new-file path of a unified diff entry.
+_FILE_HEADER_RE = re.compile(r"^\+\+\+ b/(.+)$")
+# `@@ -o[,oc] +n[,nc] @@` — captures the target (new) file line range only.
+_HUNK_HEADER_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
+# `def`/`class` definition line, capturing indentation, keyword and name.
+_DEF_CLASS_RE = re.compile(r"^(\s*)(def|class)\s+([A-Za-z_][A-Za-z0-9_]*)")
+
+
+def _parse_diff_hunks(diff: str) -> List[Tuple[str, int, int]]:
+    """Extract (file_path, new_start_line, new_count) for every `@@` hunk.
+
+    The file path is taken from the preceding `+++ b/<path>` header; the line
+    range from the hunk header's target (`+n[,nc]`) segment, since the file is
+    read from the post-change workspace checkout. Entries without a `+++ b/`
+    header or `@@` hunk (e.g. pure renames / binary files) are ignored.
+    """
+    hunks: List[Tuple[str, int, int]] = []
+    current_file: Optional[str] = None
+    for line in diff.splitlines():
+        file_match = _FILE_HEADER_RE.match(line)
+        if file_match:
+            current_file = file_match.group(1).strip()
+            continue
+        hunk_match = _HUNK_HEADER_RE.match(line)
+        if hunk_match and current_file:
+            new_start = int(hunk_match.group(1))
+            new_count = int(hunk_match.group(2)) if hunk_match.group(2) else 1
+            hunks.append((current_file, new_start, new_count))
+    return hunks
+
+
+def _find_enclosing_function(
+    lines: List[str], hunk_start_idx: int, hunk_end_idx: int
+) -> Optional[Tuple[int, int, str]]:
+    """Locate the enclosing `def`/`class` body around a hunk.
+
+    `hunk_start_idx` / `hunk_end_idx` are 0-indexed positions into `lines`
+    representing the hunk's target-file range. Returns
+    `(func_start_idx, func_end_idx_exclusive, func_name)` or `None` when the
+    change is at module level (no enclosing `def`/`class`).
+    """
+    if not lines:
+        return None
+    hunk_start_idx = max(0, min(hunk_start_idx, len(lines) - 1))
+    hunk_end_idx = max(hunk_start_idx, min(hunk_end_idx, len(lines) - 1))
+
+    # Walk upward from the hunk start to the nearest enclosing def/class.
+    enc_idx: Optional[int] = None
+    enc_name = ""
+    enc_indent = 0
+    i = hunk_start_idx
+    while i >= 0:
+        m = _DEF_CLASS_RE.match(lines[i])
+        if m:
+            enc_idx = i
+            enc_name = m.group(3)
+            enc_indent = len(m.group(1))
+            break
+        i -= 1
+    if enc_idx is None:
+        return None
+
+    # Walk downward from the hunk end to the next def/class at the same or
+    # lower indentation (end of the enclosing function/class). EOF = end.
+    end_idx = len(lines)
+    j = hunk_end_idx + 1
+    while j < len(lines):
+        m = _DEF_CLASS_RE.match(lines[j])
+        if m and len(m.group(1)) <= enc_indent:
+            end_idx = j
+            break
+        j += 1
+
+    if end_idx <= enc_idx:
+        end_idx = enc_idx + 1
+    return enc_idx, end_idx, enc_name
+
+
+def _truncate_context(text: str, limit: int = _CONTEXT_CHAR_LIMIT_PER_FILE) -> str:
+    """Enforce the per-file character limit, appending a truncation marker."""
+    if len(text) <= limit:
+        return text
+    return text[:limit] + "\n[... truncated ...]"
+
+
+def enrich_diff_with_function_context(diff: str, workspace_dir: str) -> str:
+    """Append the enclosing-function body of every changed Python hunk.
+
+    Implements ADR-0011 (pr-agent enclosing-component strategy). For each `@@`
+    hunk of a `.py` file present in `workspace_dir`, the full enclosing
+    `def`/`class` body is extracted and appended to the diff as
+    ``=== CONTEXT: <file> <function> ===`` blocks, which are appended to the
+    user prompt of all judges in :func:`main`.
+
+    Non-Python files, deletions (`/dev/null` target), missing files, files
+    without `@@` hunks, and module-level changes are skipped. A per-file
+    15,000-character limit is enforced with ``[... truncated ...]``.
+    """
+    if not diff or not diff.strip():
+        return diff
+
+    hunks = _parse_diff_hunks(diff)
+    if not hunks:
+        return diff
+
+    # file_path -> (file_lines, {enc_idx: (end_idx, name)})
+    file_data: Dict[str, Tuple[List[str], Dict[int, Tuple[int, str]]]] = {}
+    for file_path, new_start, new_count in hunks:
+        if not file_path.endswith(".py") or file_path == "/dev/null":
+            continue
+        if file_path in file_data:
+            file_lines = file_data[file_path][0]
+        else:
+            full_path = os.path.join(workspace_dir, file_path)
+            if not os.path.isfile(full_path):
+                continue
+            try:
+                with open(full_path, "r", encoding="utf-8", errors="replace") as f:
+                    file_lines = f.read().splitlines()
+            except Exception as e:
+                sys.stdout.write(
+                    f"[WARN] Failed to read {file_path} for context: {e}\n"
+                )
+                continue
+            file_data[file_path] = (file_lines, {})
+
+        if not file_lines:
+            continue
+        funcs = file_data[file_path][1]
+        hunk_start_idx = new_start - 1
+        hunk_end_idx = new_start + new_count - 2
+        enc = _find_enclosing_function(file_lines, hunk_start_idx, hunk_end_idx)
+        if enc is None:
+            continue
+        enc_idx, end_idx, name = enc
+        funcs[enc_idx] = (end_idx, name)
+
+    context_blocks: List[str] = []
+    for file_path, (file_lines, funcs) in file_data.items():
+        if not funcs:
+            continue
+        sub_blocks = []
+        for enc_idx in sorted(funcs.keys()):
+            end_idx, name = funcs[enc_idx]
+            body = "\n".join(file_lines[enc_idx:end_idx])
+            sub_blocks.append(f"=== CONTEXT: {file_path} {name} ===\n{body}")
+        context_blocks.append(_truncate_context("\n\n".join(sub_blocks)))
+
+    if not context_blocks:
+        return diff
+
+    return (
+        diff + "\n\n=== ENCLOSING FUNCTION CONTEXT ===\n" + "\n\n".join(context_blocks)
+    )
+
+
 def main():
     # Initialize telemetry
     init_telemetry()
@@ -564,6 +735,16 @@ def main():
         if not openrouter_api_key:
             sys.stderr.write("[ERR] OPENROUTER_API_KEY not configured.\n")
             sys.exit(1)
+
+        # Enclosing-function context enrichment (ADR-0011). Computed once and
+        # appended to the user prompt (the diff) of all judges.
+        workspace_dir = os.getenv("GITHUB_WORKSPACE", ".")
+        enriched_diff = enrich_diff_with_function_context(diff, workspace_dir)
+        if enriched_diff != diff:
+            log(
+                "[INFO] Enriched diff with enclosing-function context "
+                f"(+{len(enriched_diff) - len(diff)} chars)."
+            )
 
         judges_data: Dict[str, Any] = {
             "syntax_lint": {
@@ -639,7 +820,6 @@ def main():
 
                 prompt = judge_info["prompt"]
                 if judge_key == "architecture":
-                    workspace_dir = os.getenv("GITHUB_WORKSPACE", ".")
                     arch_context = load_architecture_context(workspace_dir)
                     if arch_context:
                         prompt += (
@@ -651,7 +831,7 @@ def main():
 
                 try:
                     raw_resp = call_llm_for_review(
-                        judge_key, prompt, diff, openrouter_api_key
+                        judge_key, prompt, enriched_diff, openrouter_api_key
                     )
                     verdict, reasoning, findings = evaluate_response(raw_resp)
 
