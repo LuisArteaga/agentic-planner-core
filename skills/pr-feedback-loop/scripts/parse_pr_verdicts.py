@@ -28,7 +28,6 @@ import json
 import subprocess
 import sys
 
-JUDGE_KEYS = ["syntax_lint", "test_coverage", "architecture", "security"]
 BLOCK_START = "<!-- llm-pr-review-verdicts"
 BLOCK_END = "-->"
 
