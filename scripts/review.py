@@ -84,6 +84,12 @@ def log(message):
             pass
 
 
+# Judge dimensions, in summary-table order. Single source of truth for the
+# review body loops and the hidden ADR-0015 verdict block (parsed by the
+# pr-feedback-loop skill's parse_pr_verdicts.py).
+JUDGE_KEYS = ["syntax_lint", "test_coverage", "architecture", "security"]
+
+
 SYSTEM_PROMPT_SYNTAX_LINT = (
     "You are a code reviewer specialized in syntax validation, JSON schemas, and naming conventions.\n"
     "Review the PR diff against these specific criteria:\n"
@@ -654,6 +660,8 @@ def main():
 
                     if verdict == "Pass":
                         judge_info["status"] = "PASS"
+                    elif verdict == "Needs Review":
+                        judge_info["status"] = "NEEDS REVIEW"
                     else:
                         judge_info["status"] = "FAIL"
 
@@ -694,13 +702,15 @@ def main():
         report_lines.append("| Judge | Status | Details |")
         report_lines.append("| :--- | :---: | :--- |")
 
-        for key in ["syntax_lint", "test_coverage", "architecture", "security"]:
+        for key in JUDGE_KEYS:
             info = judges_data[key]
             status = info["status"]
             if status == "PASS":
                 status_emoji = "✅ PASS"
             elif status == "FAIL":
                 status_emoji = "❌ FAIL"
+            elif status == "NEEDS REVIEW":
+                status_emoji = "⚠️ NEEDS REVIEW"
             else:
                 status_emoji = "⏭️ SKIPPED"
 
@@ -711,6 +721,8 @@ def main():
                     details = f"Check failed to run: {info['error']}"
                 else:
                     details = f"{len(info['findings'])} violations found."
+            elif status == "NEEDS REVIEW":
+                details = "Judge lacked context to verify."
             else:
                 details = "All criteria passed."
 
@@ -721,15 +733,18 @@ def main():
         report_lines.append("\n---\n")
 
         # Details section for executed judges
-        for key in ["syntax_lint", "test_coverage", "architecture", "security"]:
+        for key in JUDGE_KEYS:
             info = judges_data[key]
             if info["status"] == "SKIPPED":
                 continue
 
             report_lines.append(f"### ➡️ {info['name']} (`{key}`)")
-            report_lines.append(
-                f"* **Status**: {'✅ PASS' if info['status'] == 'PASS' else '❌ FAIL'}"
-            )
+            status_label = {
+                "PASS": "✅ PASS",
+                "FAIL": "❌ FAIL",
+                "NEEDS REVIEW": "⚠️ NEEDS REVIEW",
+            }.get(info["status"], "⏭️ SKIPPED")
+            report_lines.append(f"* **Status**: {status_label}")
 
             # Resolve individual Q statuses
             q_status = {}
@@ -770,8 +785,19 @@ def main():
 
         combined_report = "\n".join(report_lines)
 
-        # Determine overall success / failure
-        overall_failed = any(info["status"] == "FAIL" for info in judges_data.values())
+        # Hidden machine-parseable verdict block (ADR-0015). Invisible in the
+        # GitHub-rendered review; parsed by .agents/skills/pr-feedback-loop.
+        hidden_lines = ["<!-- llm-pr-review-verdicts"]
+        for key in JUDGE_KEYS:
+            hidden_lines.append(f"{key}: {judges_data[key]['status']}")
+        hidden_lines.append("-->")
+        combined_report += "\n" + "\n".join(hidden_lines)
+
+        # Determine overall success / failure.
+        # Per ADR-0014, both FAIL and NEEDS REVIEW block the merge.
+        overall_failed = any(
+            info["status"] in ("FAIL", "NEEDS REVIEW") for info in judges_data.values()
+        )
         review_action = "request-changes" if overall_failed else "approve"
 
         try:
