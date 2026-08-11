@@ -365,3 +365,222 @@ def test_review_needs_review_blocks_merge(mock_env):
     assert "test_coverage: NEEDS REVIEW" in body
     assert "security: NEEDS REVIEW" in body
     assert "architecture: NEEDS REVIEW" in body
+
+
+# --- ADR-0011: enclosing-function context enrichment ---------------------
+
+
+def test_parse_diff_hunks_extracts_file_and_target_range():
+    """Hunk extraction: file path from `+++ b/`, target range from `@@ +n,nc @@`."""
+    from scripts.review import _parse_diff_hunks
+
+    diff = (
+        "diff --git a/pkg/mod.py b/pkg/mod.py\n"
+        "--- a/pkg/mod.py\n"
+        "+++ b/pkg/mod.py\n"
+        "@@ -10,3 +12,4 @@ def process():\n"
+        " ctx\n"
+        "+added\n"
+        "diff --git a/README.md b/README.md\n"
+        "--- a/README.md\n"
+        "+++ b/README.md\n"
+        "@@ -1,1 +1,1 @@\n"
+        "-old\n"
+        "+new\n"
+    )
+    assert _parse_diff_hunks(diff) == [
+        ("pkg/mod.py", 12, 4),
+        ("README.md", 1, 1),
+    ]
+
+
+def test_parse_diff_hunks_ignores_entries_without_hunks():
+    from scripts.review import _parse_diff_hunks
+
+    # Pure rename / no `@@` hunks -> nothing extracted.
+    diff = "diff --git a/old.py b/new.py\nrename from old.py\nrename to new.py\n"
+    assert _parse_diff_hunks(diff) == []
+    # No preceding `+++ b/` header -> no file associated with the hunk.
+    assert _parse_diff_hunks("@@ -1,1 +1,1 @@\n+x\n") == []
+
+
+def test_find_enclosing_function_finds_innermost_def():
+    from scripts.review import _find_enclosing_function
+
+    lines = [
+        "def first():",
+        "    a = 1",
+        "    return a",
+        "",
+        "def second():",
+        "    b = 2",
+        "    return b",
+        "",
+        "def third():",
+        "    c = 3",
+    ]
+    # Hunk inside `second` (b = 2) -> walk up finds `second`, down finds
+    # `third` (next def at the same indent).
+    assert _find_enclosing_function(lines, 5, 5) == (4, 8, "second")
+    # Hunk inside `first` -> down boundary is `second`.
+    assert _find_enclosing_function(lines, 1, 1) == (0, 4, "first")
+    # Hunk inside `third` -> no following def -> body runs to EOF.
+    assert _find_enclosing_function(lines, 9, 9) == (8, 10, "third")
+
+
+def test_find_enclosing_function_module_level_returns_none():
+    from scripts.review import _find_enclosing_function
+
+    lines = ["import os", "CONST = 1", "", "def f():", "    pass"]
+    # Module-level change (CONST = 1) has no enclosing def/class.
+    assert _find_enclosing_function(lines, 1, 1) is None
+    # Empty input is safe.
+    assert _find_enclosing_function([], 0, 0) is None
+
+
+def test_truncate_context_respects_per_file_limit():
+    from scripts.review import _truncate_context, _CONTEXT_CHAR_LIMIT_PER_FILE
+
+    short = "x" * 100
+    assert _truncate_context(short) == short
+
+    at_limit = "x" * _CONTEXT_CHAR_LIMIT_PER_FILE
+    assert _truncate_context(at_limit) == at_limit
+
+    over = "y" * (_CONTEXT_CHAR_LIMIT_PER_FILE + 50)
+    result = _truncate_context(over)
+    assert result.endswith("\n[... truncated ...]")
+    assert result[:_CONTEXT_CHAR_LIMIT_PER_FILE] == "y" * _CONTEXT_CHAR_LIMIT_PER_FILE
+
+
+def test_enrich_diff_appends_enclosing_function_context(tmp_path):
+    from scripts.review import enrich_diff_with_function_context
+
+    src = tmp_path / "src" / "mod.py"
+    src.parent.mkdir(parents=True)
+    src.write_text(
+        "def is_url_allowed(url):\n"
+        "    return True\n"
+        "\n"
+        "def process(url):\n"
+        "    return is_url_allowed(url)\n",
+        encoding="utf-8",
+    )
+    diff = (
+        "diff --git a/src/mod.py b/src/mod.py\n"
+        "--- a/src/mod.py\n"
+        "+++ b/src/mod.py\n"
+        "@@ -4,2 +4,2 @@\n"
+        " def process(url):\n"
+        "-    return is_url_allowed(url)\n"
+        "+    return is_url_allowed(url) or True\n"
+    )
+    result = enrich_diff_with_function_context(diff, str(tmp_path))
+
+    assert result.startswith(diff)
+    assert "=== ENCLOSING FUNCTION CONTEXT ===" in result
+    assert "=== CONTEXT: src/mod.py process ===" in result
+    # The full body (not just the changed line) is included.
+    assert "return is_url_allowed(url) or True" in result
+    # The untouched sibling def is NOT emitted as its own context block.
+    assert "=== CONTEXT: src/mod.py is_url_allowed ===" not in result
+
+
+def test_enrich_diff_ip_address_regression(tmp_path):
+    """INC-001 regression: two distinct IPs in the same function must both be
+    visible in the enriched context so the architecture judge no longer
+    treats them as a duplicate assertion (which caused the false positive
+    when only the ±3-line diff was visible)."""
+    from scripts.review import enrich_diff_with_function_context
+
+    src = tmp_path / "tests" / "test_fetch.py"
+    src.parent.mkdir(parents=True)
+    src.write_text(
+        "class TestFetch:\n"
+        "    def test_ssrf_protection(self):\n"
+        "        # loopback must be blocked\n"
+        '        self.assertFalse(is_url_allowed("http://127.0.0.1"))\n'
+        "        # aws metadata must be blocked\n"
+        '        self.assertFalse(is_url_allowed("http://169.254.169.254"))\n'
+        "        # public host is allowed\n"
+        '        self.assertTrue(is_url_allowed("https://example.com"))\n',
+        encoding="utf-8",
+    )
+    diff = (
+        "diff --git a/tests/test_fetch.py b/tests/test_fetch.py\n"
+        "--- a/tests/test_fetch.py\n"
+        "+++ b/tests/test_fetch.py\n"
+        "@@ -4,3 +4,3 @@\n"
+        "        # loopback must be blocked\n"
+        '-        self.assertFalse(is_url_allowed("http://127.0.0.1"))\n'
+        '+        self.assertFalse(is_url_allowed("http://127.0.0.1", strict=True))\n'
+        "        # aws metadata must be blocked\n"
+    )
+    result = enrich_diff_with_function_context(diff, str(tmp_path))
+
+    # The enclosing method is fully included ...
+    assert "=== CONTEXT: tests/test_fetch.py test_ssrf_protection ===" in result
+    # ... and both distinct IP addresses are visible to the judge.
+    assert "127.0.0.1" in result
+    assert "169.254.169.254" in result
+    # The class is not emitted as a separate context block.
+    assert "=== CONTEXT: tests/test_fetch.py TestFetch ===" not in result
+
+
+def test_enrich_diff_skips_non_python_and_missing_files(tmp_path):
+    from scripts.review import enrich_diff_with_function_context
+
+    # A Python hunk whose file does not exist on disk + a non-Python hunk:
+    # both must be skipped without crashing, and the diff returned unchanged.
+    diff = (
+        "diff --git a/missing.py b/missing.py\n"
+        "--- a/missing.py\n"
+        "+++ b/missing.py\n"
+        "@@ -1,1 +1,1 @@\n"
+        "-a\n+ b\n"
+        "diff --git a/notes.md b/notes.md\n"
+        "--- a/notes.md\n"
+        "+++ b/notes.md\n"
+        "@@ -1,1 +1,1 @@\n"
+        "-a\n+ b\n"
+    )
+    assert enrich_diff_with_function_context(diff, str(tmp_path)) == diff
+
+
+def test_enrich_diff_no_hunks_returns_diff_unchanged():
+    from scripts.review import enrich_diff_with_function_context
+
+    # The simplified diffs used by the existing end-to-end tests lack `@@`
+    # hunks: enrichment must be a no-op so those tests stay green.
+    diff = "diff --git a/file.py b/file.py\n+class HubCustomer:\n+    pass"
+    assert enrich_diff_with_function_context(diff, ".") == diff
+
+
+def test_enrich_diff_rejects_path_traversal(tmp_path):
+    """Security Q2 regression: a hunk whose file path attempts traversal
+    (e.g. `../../etc/passwd`-style) must be skipped — the file outside the
+    workspace is never read."""
+    from scripts.review import enrich_diff_with_function_context
+
+    # A real file placed OUTSIDE the workspace to tempt the reader.
+    outside = tmp_path.parent / "secret.py"
+    outside.write_text("SECRET = 'leaked'\n", encoding="utf-8")
+    rel_escape = os.path.relpath(outside, str(tmp_path))
+
+    diff = (
+        "diff --git a/x.py b/x.py\n"
+        "--- a/x.py\n"
+        "+++ b/x.py\n"
+        "@@ -1,1 +1,1 @@\n-old\n+new\n"
+        "diff --git a/esc.py b/" + rel_escape.replace(os.sep, "/") + "\n"
+        "--- a/" + rel_escape.replace(os.sep, "/") + "\n"
+        "+++ b/" + rel_escape.replace(os.sep, "/") + "\n"
+        "@@ -1,1 +1,1 @@\n-S\n+S\n"
+    )
+    result = enrich_diff_with_function_context(diff, str(tmp_path))
+
+    # The escaped path must not contribute any context and the secret content
+    # must never appear in the enriched diff.
+    assert "SECRET" not in result
+    assert "leaked" not in result
+    assert "=== CONTEXT:" + rel_escape not in result
