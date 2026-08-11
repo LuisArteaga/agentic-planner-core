@@ -2,6 +2,7 @@ import os
 import tempfile
 import pytest
 import yaml
+from unittest.mock import patch
 from planner.config import AppConfig
 
 
@@ -17,7 +18,16 @@ def clean_env():
     ]:
         if key in os.environ:
             del os.environ[key]
-    yield
+    # Clear all *_MODEL override env vars so .env model overrides (e.g.
+    # GRILL_MODEL) don't leak into tests asserting factory-driven config (#58).
+    for key in [k for k in list(os.environ) if k.endswith("_MODEL")]:
+        del os.environ[key]
+    # Prevent resolve_model_config's load_env_file() (config.py:236) and
+    # AppConfig.__init__ (config.py:96) from re-populating .env overrides during
+    # the test (#58). Without this, clearing *_MODEL above is undone because
+    # load_env_file sets keys that are not already in os.environ.
+    with patch("planner.config.load_env_file", lambda *a, **k: None):
+        yield
     # Restore original environment
     os.environ.clear()
     os.environ.update(old_env)
