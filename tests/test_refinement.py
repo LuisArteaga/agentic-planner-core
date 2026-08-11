@@ -526,6 +526,205 @@ class RefinementNodesTests(unittest.TestCase):
         self.assertEqual(_extract_citations_from_annotations(None), [])
         self.assertEqual(_extract_citations_from_annotations([]), [])
 
+    @patch("planner.nodes.web_search.AppConfig")
+    @patch("planner.nodes.web_search.get_llm")
+    def test_web_search_multi_query_accumulates_and_dedupes(
+        self, mock_get_llm, mock_config_class
+    ):
+        """#57: each query produces its own search call; citations are
+        accumulated across queries, deduplicated by URL, and capped."""
+        mock_config = MagicMock()
+        mock_config.sources.urls = []  # no direct pre-fetch
+        mock_config_class.return_value = mock_config
+
+        mock_instance = MagicMock()
+        mock_get_llm.return_value = mock_instance
+
+        def _response(citations):
+            """Build a mock AIMessage carrying several url_citation annotations."""
+            resp = MagicMock(spec=AIMessage)
+            resp.content = "synthesis"
+            resp.additional_kwargs = {
+                "annotations": [
+                    {
+                        "type": "url_citation",
+                        "url_citation": {
+                            "url": url,
+                            "title": title,
+                            "content": "snippet",
+                            "start_index": 0,
+                            "end_index": 1,
+                        },
+                    }
+                    for url, title in citations
+                ]
+            }
+            resp.response_metadata = {
+                "token_usage": {"prompt_tokens": 50, "completion_tokens": 50}
+            }
+            return resp
+
+        # Query 1 returns citations a + b; query 2 returns a (dup) + c.
+        mock_bind = MagicMock()
+        mock_instance.bind.return_value = mock_bind
+        mock_bind.invoke.side_effect = [
+            _response([("https://example.com/a", "A"), ("https://example.com/b", "B")]),
+            _response(
+                [("https://example.com/a", "A-dup"), ("https://example.com/c", "C")]
+            ),
+        ]
+
+        state: RefinementState = {
+            "draft_issue_content": "Some draft",
+            "strict_mode": True,
+            "allowed_domains": ["example.com"],
+            "messages": [],
+            "keywords": ["q1", "q2"],
+            "search_queries": ["query one", "query two"],
+            "search_results": [],
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "model_name": "",
+            "status": "idle",
+        }
+
+        output = web_search_node(state)
+
+        # One invoke per query (each query yields exactly one search call here).
+        self.assertEqual(mock_bind.invoke.call_count, 2)
+        # Tool bound once, reused across queries.
+        mock_instance.bind.assert_called_once()
+
+        urls = [r["url"] for r in output["search_results"]]
+        # Deduped: 'a' appears in both queries but is kept once; total 3 unique.
+        self.assertEqual(
+            sorted(urls),
+            ["https://example.com/a", "https://example.com/b", "https://example.com/c"],
+        )
+        # Tokens accumulated across both queries (50+50 per response, 2 responses).
+        self.assertEqual(output["prompt_tokens"], 100)
+        self.assertEqual(output["completion_tokens"], 100)
+        # Aggregate success with citations.
+        self.assertEqual(output["status"], "success")
+        self.assertEqual(output["web_search_error"], "")
+
+    @patch("planner.nodes.web_search.AppConfig")
+    @patch("planner.nodes.web_search.get_llm")
+    def test_web_search_multi_query_no_silent_drop_on_failure(
+        self, mock_get_llm, mock_config_class
+    ):
+        """#57 AC: a later query failure must NOT discard earlier queries'
+        results (no silent drop)."""
+        mock_config = MagicMock()
+        mock_config.sources.urls = []
+        mock_config_class.return_value = mock_config
+
+        mock_instance = MagicMock()
+        mock_get_llm.return_value = mock_instance
+
+        good_response = MagicMock(spec=AIMessage)
+        good_response.content = "synthesis"
+        good_response.additional_kwargs = {
+            "annotations": [
+                {
+                    "type": "url_citation",
+                    "url_citation": {
+                        "url": "https://example.com/kept",
+                        "title": "Kept",
+                        "content": "snippet",
+                        "start_index": 0,
+                        "end_index": 1,
+                    },
+                }
+            ]
+        }
+        good_response.response_metadata = {
+            "token_usage": {"prompt_tokens": 10, "completion_tokens": 10}
+        }
+
+        mock_bind = MagicMock()
+        mock_instance.bind.return_value = mock_bind
+        # Query 1 succeeds; query 2 raises (e.g. transient OpenRouter 504).
+        mock_bind.invoke.side_effect = [good_response, RuntimeError("OpenRouter 504")]
+
+        state: RefinementState = {
+            "draft_issue_content": "Some draft",
+            "strict_mode": True,
+            "allowed_domains": ["example.com"],
+            "messages": [],
+            "keywords": ["q1", "q2"],
+            "search_queries": ["good query", "bad query"],
+            "search_results": [],
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "model_name": "",
+            "status": "idle",
+        }
+
+        output = web_search_node(state)
+
+        # Earlier query's results are retained — no silent drop.
+        self.assertEqual(len(output["search_results"]), 1)
+        self.assertEqual(output["search_results"][0]["url"], "https://example.com/kept")
+        # Partial success is honest: success status with the failure recorded.
+        self.assertEqual(output["status"], "success")
+        self.assertIn("OpenRouter 504", output["web_search_error"])
+        # Tokens from the successful query are still tracked.
+        self.assertEqual(output["prompt_tokens"], 10)
+
+    @patch("planner.nodes.web_search.AppConfig")
+    @patch("planner.nodes.web_search.get_llm")
+    def test_web_search_multi_query_all_fail_is_failed(
+        self, mock_get_llm, mock_config_class
+    ):
+        """#57: when every query fails/returns nothing, status is an honest
+        web_search_failed (not a silent empty success)."""
+        mock_config = MagicMock()
+        mock_config.sources.urls = []
+        mock_config_class.return_value = mock_config
+
+        mock_instance = MagicMock()
+        mock_get_llm.return_value = mock_instance
+
+        empty_response = MagicMock(spec=AIMessage)
+        empty_response.content = "no findings"
+        empty_response.additional_kwargs = {}  # no annotations
+        empty_response.response_metadata = {
+            "token_usage": {"prompt_tokens": 5, "completion_tokens": 5}
+        }
+
+        mock_bind = MagicMock()
+        mock_instance.bind.return_value = mock_bind
+        mock_bind.invoke.side_effect = [empty_response, RuntimeError("OpenRouter 504")]
+
+        state: RefinementState = {
+            "draft_issue_content": "Some draft",
+            "strict_mode": True,
+            "allowed_domains": ["example.com"],
+            "messages": [],
+            "keywords": ["q1", "q2"],
+            "search_queries": ["empty query", "bad query"],
+            "search_results": [],
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "model_name": "",
+            "status": "idle",
+        }
+
+        output = web_search_node(state)
+
+        self.assertEqual(output["search_results"], [])
+        self.assertEqual(output["status"], "web_search_failed")
+        self.assertNotEqual(output["web_search_error"], "")
+
+    def test_web_search_aggregated_cap_enforced(self):
+        """#57 AC: the hard cap is raised to ~20 so deduped accumulation is
+        not silently discarded."""
+        from planner.nodes.web_search import MAX_AGGREGATED_RESULTS
+
+        self.assertGreaterEqual(MAX_AGGREGATED_RESULTS, 15)
+        self.assertLessEqual(MAX_AGGREGATED_RESULTS, 20)
+
     @patch("planner.refine_graph.refine_subgraph")
     def test_master_graph_iteration(self, mock_subgraph):
         mock_subgraph.invoke.return_value = {"status": "success"}
