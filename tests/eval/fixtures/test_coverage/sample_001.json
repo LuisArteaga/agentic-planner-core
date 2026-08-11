@@ -1,11 +1,11 @@
 {
   "id": "test_coverage_present",
-  "diff": "diff --git a/tests/test_customer.py b/tests/test_customer.py\nnew file mode 100644\n--- /dev/null\n+++ b/tests/test_customer.py\n@@ -0,0 +1,8 @@\n+import pytest\n+from app.customer import HubCustomer\n+\n+@pytest.fixture\n+def sample_customer():\n+    return HubCustomer(\"C-001\")\n+\n+def test_customer_id(sample_customer):\n+    assert sample_customer.customer_id == \"C-001\"\n",
+  "diff": "diff --git a/tests/test_customer.py b/tests/test_customer.py\nnew file mode 100644\n--- /dev/null\n+++ b/tests/test_customer.py\n@@ -0,0 +1,6 @@\n+from app.customer import HubCustomer\n+\n+def test_customer_id():\n+    customer = HubCustomer(\"C-001\")\n+    assert customer.customer_id == \"C-001\"\n",
   "expected_passed": true,
   "expected_score": 1.0,
   "expected_verdict": "PASS",
-  "diff_token_count": 75,
+  "diff_token_count": 65,
   "metadata": {
-    "description": "Test file with a fixture and assertions present."
+    "description": "Test file with assertions present (plain function, no decorators)."
   }
 }
