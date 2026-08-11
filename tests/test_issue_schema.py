@@ -14,7 +14,9 @@ if project_root not in sys.path:
 
 from scripts.issue_schema import (  # noqa: E402
     build_rejection_comment,
+    decide_enforcement,
     parse_issue_form_template,
+    render_action_script,
     required_headers,
     validate_issue_body,
 )
@@ -178,3 +180,99 @@ def test_cli_returns_one_and_writes_comment_for_invalid_body(tmp_path: Path) -> 
     assert '"valid": false' in proc.stdout
     assert comment.exists()
     assert "Missing required sections" in comment.read_text(encoding="utf-8")
+
+
+# --- Enforcement policy (decide_enforcement) -----------------------------
+# These tests cover the conditional policy the workflow applies. The workflow
+# shell itself is a thin dispatcher that sources render_action_script() output;
+# all branching lives here so it stays fully covered.
+
+
+def test_enforcement_invalid_open_issues_comment() -> None:
+    a = decide_enforcement(valid=False, issue_state="open", has_invalid_label=False)
+    assert a.close and a.add_invalid_label
+    assert not a.remove_invalid_label and not a.reopen
+    assert a.comment == "rejection"
+
+
+def test_enforcement_invalid_closed_no_resend_comment() -> None:
+    # Still invalid after a closed issue is edited: no new comment (avoid spam).
+    a = decide_enforcement(valid=False, issue_state="closed", has_invalid_label=True)
+    assert a.close and a.add_invalid_label
+    assert a.comment is None
+
+
+def test_enforcement_valid_closed_with_marker_reopens() -> None:
+    a = decide_enforcement(valid=True, issue_state="closed", has_invalid_label=True)
+    assert a.remove_invalid_label and a.reopen
+    assert not a.close and not a.add_invalid_label
+    assert a.comment == "recovery"
+
+
+def test_enforcement_valid_open_with_marker_removes_label_only() -> None:
+    a = decide_enforcement(valid=True, issue_state="open", has_invalid_label=True)
+    assert a.remove_invalid_label
+    assert not a.reopen  # already open
+    assert a.comment == "recovery"
+
+
+def test_enforcement_valid_no_marker_is_noop() -> None:
+    a = decide_enforcement(valid=True, issue_state="open", has_invalid_label=False)
+    assert a.is_noop()
+    a2 = decide_enforcement(valid=True, issue_state="closed", has_invalid_label=False)
+    assert a2.is_noop()
+
+
+def test_enforcement_state_is_case_insensitive() -> None:
+    a = decide_enforcement(valid=False, issue_state="OPEN", has_invalid_label=False)
+    assert a.comment == "rejection"
+    a2 = decide_enforcement(valid=True, issue_state="CLOSED", has_invalid_label=True)
+    assert a2.reopen and a2.comment == "recovery"
+
+
+def test_render_action_script_emits_all_vars() -> None:
+    action = decide_enforcement(
+        valid=False, issue_state="open", has_invalid_label=False
+    )
+    script = render_action_script(action)
+    assert "ENFORCE_CLOSE=true" in script
+    assert "ENFORCE_ADD_INVALID=true" in script
+    assert "ENFORCE_REMOVE_INVALID=false" in script
+    assert "ENFORCE_REOPEN=false" in script
+    assert "ENFORCE_COMMENT=rejection" in script
+
+
+def test_render_action_script_noop_emits_empty_comment() -> None:
+    action = decide_enforcement(valid=True, issue_state="open", has_invalid_label=False)
+    script = render_action_script(action)
+    assert "ENFORCE_CLOSE=false" in script
+    assert script.rstrip().endswith("ENFORCE_COMMENT=")
+
+
+def test_cli_writes_action_script(tmp_path: Path) -> None:
+    body = tmp_path / "body.md"
+    body.write_text(VALID_BODY, encoding="utf-8")
+    action = tmp_path / "action.sh"
+    proc = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT),
+            "--template",
+            str(TEMPLATE),
+            "--body-file",
+            str(body),
+            "--issue-state",
+            "open",
+            "--has-invalid-label",
+            "false",
+            "--action-script",
+            str(action),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 0
+    assert action.exists()
+    text = action.read_text(encoding="utf-8")
+    assert "ENFORCE_CLOSE=false" in text
+    assert "ENFORCE_COMMENT=" in text

@@ -29,6 +29,14 @@ jobs:
     # listens to (`opened`, `edited`, `reopened`). Because it never produces an
     # `edited` event, it cannot re-trigger itself. Do not add a step that
     # edits the issue body or title without revisiting this invariant.
+    #
+    # POLICY IS PURE PYTHON:
+    # All conditional enforcement logic lives in scripts/issue_schema.py
+    # (`decide_enforcement`) and is unit-tested in tests/test_issue_schema.py.
+    # The shell below is a thin dispatcher: it collects inputs, runs the
+    # validator, sources the emitted `ENFORCE_*` action script, and applies
+    # it via `gh`. Keep this shell free of policy branching so coverage of
+    # the policy stays in the Python tests.
     steps:
       - name: Check out repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -43,60 +51,70 @@ jobs:
           ISSUE_BODY: ${{ github.event.issue.body }}
         run: printf '%s' "$ISSUE_BODY" > /tmp/issue_body.md
 
-      - name: Validate issue body against template
+      - name: Inspect issue state and labels
+        id: issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          state=$(gh issue view "$ISSUE_NUMBER" --json state -q .state)
+          echo "state=$state" >> "$GITHUB_OUTPUT"
+          if gh issue view "$ISSUE_NUMBER" --json labels -q '.labels[].name' | grep -qx invalid; then
+            echo "has_invalid=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_invalid=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Validate issue body and decide enforcement action
         id: validate
+        env:
+          ISSUE_STATE: ${{ steps.issue.outputs.state }}
+          HAS_INVALID: ${{ steps.issue.outputs.has_invalid }}
         run: |
           set +e
           python3 scripts/issue_schema.py \
             --template .github/ISSUE_TEMPLATE/task.yml \
             --body-file /tmp/issue_body.md \
-            --comment-file /tmp/comment.md > /tmp/result.json
+            --issue-state "$ISSUE_STATE" \
+            --has-invalid-label "$HAS_INVALID" \
+            --comment-file /tmp/comment.md \
+            --action-script /tmp/action.sh > /tmp/result.json
           code=$?
           echo "valid=$([ $code -eq 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
           echo "::group::Validation report"
           cat /tmp/result.json
           echo "::endgroup::"
+          echo "::group::Enforcement action"
+          cat /tmp/action.sh
+          echo "::endgroup::"
 
-      - name: Reject non-compliant issue
-        if: steps.validate.outputs.valid != 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ISSUE_NUMBER: ${{ github.event.issue.number }}
-        run: |
-          # Ensure the `invalid` label exists (idempotent).
-          gh label create invalid \
-            --color D73A4A \
-            --description "Issue does not conform to the required schema template" \
-            2>/dev/null || true
-
-          # Only comment on the open -> closed transition to avoid spamming
-          # the thread on every edit-while-still-invalid.
-          state=$(gh issue view "$ISSUE_NUMBER" --json state -q .state)
-
-          gh issue close "$ISSUE_NUMBER" --reason "not planned"
-          gh issue edit "$ISSUE_NUMBER" --add-label invalid
-
-          if [ "$state" = "OPEN" ]; then
-            gh issue comment "$ISSUE_NUMBER" --body-file /tmp/comment.md
-          fi
-
-      - name: Reopen previously-rejected issue now compliant
-        if: steps.validate.outputs.valid == 'true'
+      - name: Apply enforcement action
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           ISSUE_AUTHOR: ${{ github.event.issue.user.login }}
         run: |
-          # Only undo OUR rejection: act only when the `invalid` marker label
-          # is still present.
-          has_invalid=$(gh issue view "$ISSUE_NUMBER" --json labels -q '.labels[].name' \
-            | grep -qx invalid && echo yes || echo no)
+          # shellcheck disable=SC1091
+          source /tmp/action.sh
 
-          if [ "$has_invalid" = "yes" ]; then
-            gh issue edit "$ISSUE_NUMBER" --remove-label invalid
-            state=$(gh issue view "$ISSUE_NUMBER" --json state -q .state)
-            if [ "$state" = "CLOSED" ]; then
-              gh issue reopen "$ISSUE_NUMBER"
-            fi
-            gh issue comment "$ISSUE_NUMBER" --body "Thanks @$ISSUE_AUTHOR — this issue now conforms to the required schema. Reopening ✅"
+          # Ensure the `invalid` label exists before we may add it (idempotent).
+          if [ "$ENFORCE_ADD_INVALID" = "true" ]; then
+            gh label create invalid \
+              --color D73A4A \
+              --description "Issue does not conform to the required schema template" \
+              2>/dev/null || true
           fi
+
+          [ "$ENFORCE_CLOSE" = "true" ] && gh issue close "$ISSUE_NUMBER" --reason "not planned"
+          [ "$ENFORCE_ADD_INVALID" = "true" ] && gh issue edit "$ISSUE_NUMBER" --add-label invalid
+          [ "$ENFORCE_REMOVE_INVALID" = "true" ] && gh issue edit "$ISSUE_NUMBER" --remove-label invalid
+          [ "$ENFORCE_REOPEN" = "true" ] && gh issue reopen "$ISSUE_NUMBER"
+
+          case "$ENFORCE_COMMENT" in
+            rejection)
+              gh issue comment "$ISSUE_NUMBER" --body-file /tmp/comment.md
+              ;;
+            recovery)
+              gh issue comment "$ISSUE_NUMBER" --body "Thanks @$ISSUE_AUTHOR — this issue now conforms to the required schema. Reopening ✅"
+              ;;
+          esac

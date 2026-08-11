@@ -46,6 +46,93 @@ class ValidationResult:
         return not self.missing and not self.empty
 
 
+@dataclass(frozen=True)
+class EnforcementAction:
+    """What the workflow should do for an issue, given validation + state.
+
+    Encodes the conditional enforcement policy as pure data so it can be unit
+    tested independently of the GitHub Actions shell that applies it. The
+    companion workflow turns this into ``gh`` calls; it must not introduce any
+    further branching so the policy stays fully covered by tests.
+    """
+
+    close: bool = False
+    add_invalid_label: bool = False
+    remove_invalid_label: bool = False
+    reopen: bool = False
+    # "rejection" (non-compliant, posted once on open->closed), "recovery"
+    # (now compliant, posted once on closed->open), or None (no comment).
+    comment: str | None = None
+
+    def is_noop(self) -> bool:
+        return not (
+            self.close
+            or self.add_invalid_label
+            or self.remove_invalid_label
+            or self.reopen
+            or self.comment
+        )
+
+
+def decide_enforcement(
+    valid: bool, issue_state: str, has_invalid_label: bool
+) -> EnforcementAction:
+    """Decide the enforcement action for an issue.
+
+    Args:
+        valid: whether the issue body satisfies the required schema.
+        issue_state: the issue's current state, ``"open"`` or ``"closed"``
+            (case-insensitive).
+        has_invalid_label: whether the issue currently carries the ``invalid``
+            marker label (our own rejection marker).
+
+    Policy:
+        - Non-compliant issue: ensure it is closed and labelled ``invalid``.
+          Post the rejection comment only on the open -> closed transition
+          (avoid spamming on every edit-while-still-invalid).
+        - Compliant issue carrying our ``invalid`` marker: remove the marker,
+          reopen if it was closed, and post a recovery comment. A compliant
+          issue without the marker is left untouched (fresh valid issues).
+    """
+    state = (issue_state or "").strip().lower()
+
+    if not valid:
+        return EnforcementAction(
+            close=True,
+            add_invalid_label=True,
+            remove_invalid_label=False,
+            reopen=False,
+            comment="rejection" if state == "open" else None,
+        )
+
+    if has_invalid_label:
+        return EnforcementAction(
+            close=False,
+            add_invalid_label=False,
+            remove_invalid_label=True,
+            reopen=state == "closed",
+            comment="recovery",
+        )
+
+    return EnforcementAction()
+
+
+def render_action_script(action: EnforcementAction) -> str:
+    """Render ``action`` as a POSIX shell snippet the workflow can ``source``.
+
+    Every variable is always emitted so the sourcing shell never references an
+    unset variable (the workflow runs with ``set -u`` semantics in mind).
+    """
+    comment = action.comment if action.comment is not None else ""
+    return (
+        f"ENFORCE_CLOSE={'true' if action.close else 'false'}\n"
+        f"ENFORCE_ADD_INVALID={'true' if action.add_invalid_label else 'false'}\n"
+        f"ENFORCE_REMOVE_INVALID={'true' if action.remove_invalid_label else 'false'}\n"
+        f"ENFORCE_REOPEN={'true' if action.reopen else 'false'}\n"
+        f"ENFORCE_COMMENT={comment}\n"
+    )
+
+
 def _unquote(value: str) -> str:
     """Strip a single pair of surrounding quotes from a YAML scalar value."""
     if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
@@ -182,9 +269,25 @@ def main() -> int:
         "--body-file", required=True, help="path to a file holding the issue body"
     )
     parser.add_argument(
+        "--issue-state",
+        default="open",
+        help="current issue state: 'open' or 'closed' (default: open)",
+    )
+    parser.add_argument(
+        "--has-invalid-label",
+        default="false",
+        help="'true' if the issue currently carries the 'invalid' label "
+        "(default: false)",
+    )
+    parser.add_argument(
         "--comment-file",
         help="path to write the preformatted rejection comment markdown to "
         "(only written when the issue is non-compliant)",
+    )
+    parser.add_argument(
+        "--action-script",
+        help="path to write a POSIX shell snippet (ENFORCE_* vars) describing "
+        "the enforcement action for the workflow to source",
     )
     args = parser.parse_args()
 
@@ -192,18 +295,31 @@ def main() -> int:
     fields = parse_issue_form_template(Path(args.template))
     required = required_headers(fields)
     result = validate_issue_body(body, required)
+    has_invalid = args.has_invalid_label.strip().lower() in ("1", "true", "yes")
+    action = decide_enforcement(result.is_valid, args.issue_state, has_invalid)
 
     report = {
         "valid": result.is_valid,
         "missing": result.missing,
         "empty": result.empty,
         "required_headers": required,
+        "action": {
+            "close": action.close,
+            "add_invalid_label": action.add_invalid_label,
+            "remove_invalid_label": action.remove_invalid_label,
+            "reopen": action.reopen,
+            "comment": action.comment,
+        },
     }
     print(json.dumps(report, indent=2))
 
     if not result.is_valid and args.comment_file:
         Path(args.comment_file).write_text(
             build_rejection_comment(result.missing, result.empty), encoding="utf-8"
+        )
+    if args.action_script:
+        Path(args.action_script).write_text(
+            render_action_script(action), encoding="utf-8"
         )
 
     return 0 if result.is_valid else 1
