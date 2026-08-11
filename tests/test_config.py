@@ -1,7 +1,7 @@
 import os
 import tempfile
 import pytest
-import yaml
+import tomli_w
 from unittest.mock import patch
 from planner.config import AppConfig
 
@@ -33,19 +33,17 @@ def clean_env():
     os.environ.update(old_env)
 
 
-def create_temp_yaml(data):
-    temp = tempfile.NamedTemporaryFile(
-        delete=False, suffix=".yaml", mode="w", encoding="utf-8"
-    )
-    yaml.dump(data, temp)
+def create_temp_toml(data):
+    temp = tempfile.NamedTemporaryFile(delete=False, suffix=".toml", mode="wb")
+    temp.write(tomli_w.dumps(data).encode("utf-8"))
     temp.close()
     return temp.name
 
 
 def test_missing_env_vars(clean_env):
-    temp_file = create_temp_yaml({"strict": False})
+    temp_file = create_temp_toml({"strict": False})
     with pytest.raises(ValueError) as exc:
-        AppConfig(sources_yaml_path=temp_file)
+        AppConfig(sources_toml_path=temp_file)
     assert "Missing required environment variable(s)" in str(exc.value)
     os.unlink(temp_file)
 
@@ -55,14 +53,14 @@ def test_valid_config(clean_env):
     os.environ["GH_PAT"] = "test-pat"
     os.environ["GITHUB_REPOSITORY"] = "test/repo"
 
-    yaml_data = {
+    toml_data = {
         "strict": True,
         "urls": ["https://github.com/test/repo-allowed"],
         "domains": ["example.com"],
     }
-    temp_file = create_temp_yaml(yaml_data)
+    temp_file = create_temp_toml(toml_data)
 
-    config = AppConfig(sources_yaml_path=temp_file)
+    config = AppConfig(sources_toml_path=temp_file)
     assert config.openrouter_api_key == "test-key"
     assert config.sources.strict is True
     assert "https://github.com/test/repo-allowed" in config.sources.urls
@@ -76,11 +74,11 @@ def test_strict_mode_without_sources(clean_env):
     os.environ["GH_PAT"] = "test-pat"
     os.environ["GITHUB_REPOSITORY"] = "test/repo"
 
-    yaml_data = {"strict": True, "urls": [], "domains": []}
-    temp_file = create_temp_yaml(yaml_data)
+    toml_data = {"strict": True, "urls": [], "domains": []}
+    temp_file = create_temp_toml(toml_data)
 
     with pytest.raises(ValueError) as exc:
-        AppConfig(sources_yaml_path=temp_file)
+        AppConfig(sources_toml_path=temp_file)
     assert "At least one source must be defined" in str(exc.value)
 
     os.unlink(temp_file)
@@ -91,12 +89,12 @@ def test_github_workspace_resolution(clean_env):
     os.environ["GH_PAT"] = "test-pat"
     os.environ["GITHUB_REPOSITORY"] = "test/repo"
 
-    yaml_data = {"strict": False}
-    temp_file = create_temp_yaml(yaml_data)
+    toml_data = {"strict": False}
+    temp_file = create_temp_toml(toml_data)
 
     # 1. Test relative path resolution
     os.environ["GITHUB_WORKSPACE"] = "sub/dir"
-    config = AppConfig(sources_yaml_path=temp_file)
+    config = AppConfig(sources_toml_path=temp_file)
     from pathlib import Path
 
     expected_root = Path(__file__).resolve().parents[1]
@@ -110,21 +108,21 @@ def test_github_workspace_resolution(clean_env):
 
     with tf.TemporaryDirectory() as tmpdir:
         os.environ["GITHUB_WORKSPACE"] = tmpdir
-        config = AppConfig(sources_yaml_path=temp_file)
+        config = AppConfig(sources_toml_path=temp_file)
         assert config.github_workspace == str(Path(tmpdir).resolve())
         assert os.environ["GITHUB_WORKSPACE"] == config.github_workspace
 
     # 3. Test default fallback when unset
     if "GITHUB_WORKSPACE" in os.environ:
         del os.environ["GITHUB_WORKSPACE"]
-    config = AppConfig(sources_yaml_path=temp_file)
+    config = AppConfig(sources_toml_path=temp_file)
     assert config.github_workspace == os.getcwd()
     assert os.environ["GITHUB_WORKSPACE"] == os.getcwd()
 
     # 4. Test path traversal prevention for relative GITHUB_WORKSPACE
     os.environ["GITHUB_WORKSPACE"] = "../../../etc"
     with pytest.raises(ValueError) as exc:
-        AppConfig(sources_yaml_path=temp_file)
+        AppConfig(sources_toml_path=temp_file)
     assert "Path traversal detected" in str(exc.value)
 
     os.unlink(temp_file)
@@ -135,7 +133,7 @@ def test_factory_config_invalid_json(clean_env):
     os.environ["GH_PAT"] = "test-pat"
     os.environ["GITHUB_REPOSITORY"] = "test/repo"
 
-    sources_temp = create_temp_yaml({"strict": False})
+    sources_temp = create_temp_toml({"strict": False})
     # Create invalid json file
     temp_json = tempfile.NamedTemporaryFile(
         delete=False, suffix=".json", mode="w", encoding="utf-8"
@@ -144,7 +142,7 @@ def test_factory_config_invalid_json(clean_env):
     temp_json.close()
 
     with pytest.raises(ValueError) as exc:
-        AppConfig(sources_yaml_path=sources_temp, factory_json_path=temp_json.name)
+        AppConfig(sources_toml_path=sources_temp, factory_json_path=temp_json.name)
     assert "Invalid JSON format" in str(exc.value)
 
     os.unlink(sources_temp)
@@ -156,11 +154,11 @@ def test_factory_config_missing_file(clean_env):
     os.environ["GH_PAT"] = "test-pat"
     os.environ["GITHUB_REPOSITORY"] = "test/repo"
 
-    sources_temp = create_temp_yaml({"strict": False})
+    sources_temp = create_temp_toml({"strict": False})
 
     with pytest.raises(FileNotFoundError) as exc:
         AppConfig(
-            sources_yaml_path=sources_temp, factory_json_path="nonexistent_factory.json"
+            sources_toml_path=sources_temp, factory_json_path="nonexistent_factory.json"
         )
     assert "Factory configuration file not found" in str(exc.value)
 
@@ -188,7 +186,7 @@ def test_factory_config_positive_parsing(clean_env):
     os.environ["GH_PAT"] = "test-pat"
     os.environ["GITHUB_REPOSITORY"] = "test/repo"
 
-    sources_temp = create_temp_yaml({"strict": False})
+    sources_temp = create_temp_toml({"strict": False})
     # Create valid factory json
     valid_factory_data = {
         "factory_version": "2026.2.0",
@@ -217,7 +215,7 @@ def test_factory_config_positive_parsing(clean_env):
     temp_json.close()
 
     # Verify AppConfig starts successfully with valid factory.json
-    config = AppConfig(sources_yaml_path=sources_temp, factory_json_path=temp_json.name)
+    config = AppConfig(sources_toml_path=sources_temp, factory_json_path=temp_json.name)
     assert config is not None
 
     # Verify resolve_model_config fallback logic reads from our factory
@@ -318,7 +316,7 @@ def test_search_config_parsing_and_overlap(clean_env, caplog):
     os.environ["GITHUB_REPOSITORY"] = "test/repo"
 
     # 1. Test standard parsing of search config
-    yaml_data = {
+    toml_data = {
         "strict": True,
         "urls": ["https://github.com/test/repo-allowed"],
         "domains": ["example.com"],
@@ -330,8 +328,8 @@ def test_search_config_parsing_and_overlap(clean_env, caplog):
             "excluded_domains": ["REDDIT.COM ", "stackoverflow.com"],
         },
     }
-    temp_file = create_temp_yaml(yaml_data)
-    config = AppConfig(sources_yaml_path=temp_file)
+    temp_file = create_temp_toml(toml_data)
+    config = AppConfig(sources_toml_path=temp_file)
 
     assert config.sources.search.engine == "exa"
     assert config.sources.search.search_context_size == "medium"
@@ -344,7 +342,7 @@ def test_search_config_parsing_and_overlap(clean_env, caplog):
     os.unlink(temp_file)
 
     # 2. Test overlap detection and warning logging
-    yaml_data_overlap = {
+    toml_data_overlap = {
         "strict": True,
         "urls": ["https://github.com/test/repo-allowed"],
         "domains": ["example.com"],
@@ -353,13 +351,13 @@ def test_search_config_parsing_and_overlap(clean_env, caplog):
             "excluded_domains": ["EXAMPLE.COM"],  # Overlaps with domains
         },
     }
-    temp_file_overlap = create_temp_yaml(yaml_data_overlap)
+    temp_file_overlap = create_temp_toml(toml_data_overlap)
 
     import logging
 
     with caplog.at_level(logging.WARNING):
         # Trigger validation overlap warning
-        AppConfig(sources_yaml_path=temp_file_overlap)
+        AppConfig(sources_toml_path=temp_file_overlap)
 
     # Verify warning was logged
     warnings = [rec.message for rec in caplog.records if rec.levelno == logging.WARNING]

@@ -1,0 +1,19 @@
+strict = true
+urls = []
+domains = [
+    "arxiv.org",
+    "dl.acm.org",
+    "pypi.org",
+    "npmjs.com",
+    "python.langchain.com",
+    "langgraph.org",
+    "openrouter.ai",
+    "github.com",
+]
+
+[search]
+engine = "exa"
+search_context_size = "medium"
+max_results = 10
+max_total_results = 15
+excluded_domains = ["reddit.com", "stackoverflow.com"]

@@ -73,6 +73,6 @@ Similarly, draft issue saving is constrained to the `agentic-planner-core/.plann
 ## Next Steps: Refinement (Phase 3)
 Once draft issues are created under `.planner/drafts/<repo_name>/`, you can run the refinement subgraph directly:
 ```bash
-python -m planner refine --config config/sources.yaml
+python -m planner refine --config config/sources.toml
 ```
 This will read the draft issues, run deep-search validations, and publish them as official GitHub issues on the target repository.

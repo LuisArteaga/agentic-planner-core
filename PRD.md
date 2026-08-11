@@ -104,15 +104,17 @@ agentic-planner-core/
 * Traces are logged locally to `.agent_logs/otel_traces_<date>.jsonl` for crash resilience, exporting at the end of execution.
 
 ### Search & Strict Mode Configuration
-Configuration resides in a local `sources.yaml` file (copied from `sources.example.yaml`):
-```yaml
-strict: true                      # Force search to ONLY use allowed domains
-repositories:
-  - langchain-ai/langgraph
-  - SWE-agent/SWE-agent
-domains:
-  - arxiv.org
-  - dl.acm.org
+Configuration resides in a local `sources.toml` file (copied from `sources.example.toml`):
+```toml
+strict = true                      # Force search to ONLY use allowed domains
+urls = [
+    "https://github.com/langchain-ai/langgraph",
+    "https://github.com/SWE-agent/SWE-agent",
+]
+domains = [
+    "arxiv.org",
+    "dl.acm.org",
+]
 ```
 
 ---
