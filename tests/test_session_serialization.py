@@ -999,7 +999,7 @@ def test_main_refine_command():
     mock_config.get_github_session.return_value = mock_session
 
     with (
-        patch("sys.argv", ["planner", "refine", "--config", "test-sources.yaml"]),
+        patch("sys.argv", ["planner", "refine", "--config", "test-sources.toml"]),
         patch("planner.__main__.AppConfig", return_value=mock_config),
         patch("planner.__main__.graph", mock_graph),
         patch("scripts.telemetry.init_telemetry") as mock_init,

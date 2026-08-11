@@ -107,24 +107,27 @@ python -m planner draft
 ### Phase 3: Autonomous Refinement & Publishing
 Before running refinement, configure your search sources:
 ```bash
-cp config/sources.example.yaml config/sources.yaml
+cp config/sources.example.toml config/sources.toml
 ```
-Define your allowed search domains/repositories and customize search engine parameters in `config/sources.yaml`:
-```yaml
-strict: true
-repositories:
-  - langchain-ai/langgraph
-domains:
-  - arxiv.org
+Define your allowed search domains/repositories and customize search engine parameters in `config/sources.toml`:
+```toml
+strict = true
+urls = [
+    "https://github.com/langchain-ai/langgraph",
+]
+domains = [
+    "arxiv.org",
+]
 
-search:
-  engine: exa                 # Optional, defaults to "auto"
-  search_context_size: medium # Optional (short, medium, long)
-  max_results: 5              # Optional limit per query
-  max_total_results: 15       # Optional total limit
-  excluded_domains:           # Optional list of domains to block
-    - reddit.com
-    - stackoverflow.com
+[search]
+engine = "exa"                  # Optional, defaults to "auto"
+search_context_size = "medium"  # Optional (short, medium, long)
+max_results = 5                 # Optional limit per query
+max_total_results = 15          # Optional total limit
+excluded_domains = [            # Optional list of domains to block
+    "reddit.com",
+    "stackoverflow.com",
+]
 ```
 Then run refinement:
 ```bash

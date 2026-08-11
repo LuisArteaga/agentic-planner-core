@@ -28,8 +28,8 @@ def main():
     )
     refine_parser.add_argument(
         "--config",
-        default="config/sources.yaml",
-        help="Path to sources.yaml configuration",
+        default="config/sources.toml",
+        help="Path to sources.toml configuration",
     )
 
     # grill command
@@ -83,7 +83,7 @@ def main():
         try:
             with orchestrator_phase("initialize"):
                 print(f"Loading configuration from {args.config}...")
-                config = AppConfig(sources_yaml_path=args.config)
+                config = AppConfig(sources_toml_path=args.config)
                 print("Configuration loaded successfully.")
                 print(f"Target Repository: {config.github_repository}")
                 print(f"Strict Mode: {config.sources.strict}")

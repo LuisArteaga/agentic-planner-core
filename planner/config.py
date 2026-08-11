@@ -4,7 +4,7 @@ import json
 import functools
 import logging
 from typing import List, Optional, Dict, Any
-import yaml
+import tomllib
 from pydantic import BaseModel, Field, model_validator
 import requests
 from urllib3.util import Retry
@@ -49,7 +49,7 @@ class SearchParametersConfig(BaseModel):
 
 
 class SourcesConfig(BaseModel):
-    """Pydantic schema for parsing and validating sources.yaml configuration."""
+    """Pydantic schema for parsing and validating sources.toml configuration."""
 
     strict: bool = True
     urls: List[str] = Field(default_factory=list)
@@ -85,11 +85,11 @@ class SourcesConfig(BaseModel):
 
 
 class AppConfig:
-    """System configuration class containing environment variables and yaml settings."""
+    """System configuration class containing environment variables and toml settings."""
 
     def __init__(
         self,
-        sources_yaml_path: str = "config/sources.yaml",
+        sources_toml_path: str = "config/sources.toml",
         factory_json_path: str = "config/factory.json",
     ):
         # Load environment variables from .env if present
@@ -136,18 +136,18 @@ class AppConfig:
                 f"Missing required environment variable(s): {', '.join(missing)}"
             )
 
-        # Parse and validate sources.yaml
-        yaml_path = pathlib.Path(sources_yaml_path)
-        if not yaml_path.exists():
+        # Parse and validate sources.toml
+        toml_path = pathlib.Path(sources_toml_path)
+        if not toml_path.exists():
             raise FileNotFoundError(
-                f"Configuration file not found: {sources_yaml_path}"
+                f"Configuration file not found: {sources_toml_path}"
             )
 
         try:
-            with open(yaml_path, "r", encoding="utf-8") as f:
-                data = yaml.safe_load(f) or {}
+            with open(toml_path, "rb") as f:
+                data = tomllib.load(f)
         except Exception as e:
-            raise ValueError(f"Invalid YAML format in {sources_yaml_path}: {e}")
+            raise ValueError(f"Invalid TOML format in {sources_toml_path}: {e}")
 
         # Validate parsed data via Pydantic
         try:
