@@ -1,0 +1,12 @@
+{
+  "id": "evaluate_grade_placeholder",
+  "diff": "diff --git a/docs/placeholder.md b/docs/placeholder.md\nnew file mode 100644\n+++ b/docs/placeholder.md\n@@ -0,0 +1 @@\n+evaluate_grade is a numeric option-grader (ADR-0017), not a binary diff judge.\n",
+  "expected_passed": true,
+  "expected_score": 8.0,
+  "expected_verdict": "PASS",
+  "diff_token_count": 25,
+  "metadata": {
+    "description": "Placeholder fixture. evaluate_grade uses a numeric 0-10 grader with a different transport/schema than the binary PR judges; the binary eval harness does not yet implement its adapter (ADR-0017).",
+    "unsupported_in_binary_harness": true
+  }
+}

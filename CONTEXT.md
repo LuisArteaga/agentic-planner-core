@@ -73,7 +73,32 @@ Dieses Dokument definiert die fachliche Terminologie für diesen Kontext. Es dar
 
 ### Repository-API-Abruf (Repository API Retrieval)
 * **Definition**: Die Abfrage von Code-Dateien, Fehlerberichten (Issues) oder Produktveröffentlichungen (Releases) eines Softwareprojekts direkt über die Programmierschnittstelle der Hosting-Plattform.
-* **Geschäftsregeln**: Dient der präzisen und verzögerungsfreien Überprüfung des aktuellen Entwicklungsstands und von Code-Inhalten im Ziel-Repository oder in freigegebenen Fremdprojekten. Im Sicherheitsmodus wird der Zugriff streng auf das Ziel-Repository sowie auf die aus den freigegebenen Webadressen abgeleiteten Repositories beschränkt.
+* **Geschäftsregeln**: Dient der präzisen und verzögerungsfreien Überprüfung des aktuellen Entwicklungsstands und von Code-Inhalten im Ziel-Repository oder in freigegebenen Fremdprojekten. Im Sicherheitsmodus wird der Zugriff streng auf das Ziel-Repository sowie auf die aus den freigegebenen Webadressen abgelitteneten Repositories beschränkt.
+
+### Judge-Evaluierungssuite (Judge Evaluation Suite)
+* **Definition**: Die Regressionstest-Suite, die jeden binären PR-Judge (`syntax_lint`, `test_coverage`, `architecture`, `security`) gegen einen menschlich annotierten Gold-Standard ausführt und statistische Übereinstimmungskennzahlen berechnet, um Modellwechsel in der zentralen Konfiguration quantifizierbar zu machen.
+* **Geschäftsregeln**: Jeder Judge wird isoliert evaluiert. Die Suite erzeugt keine automatische Blockade (Gate), sondern liefert Kennzahlen (Cohen's Kappa, MAE, Hard Flips, Verbosity Bias) sowie OpenRouter-Kosten und Time-to-First-Token zur menschlichen Bewertung. Alle Judge-Aufrufe erfolgen deterministisch (`temperature = 0.0`).
+* **Synonyme / Abzugrenzende Begriffe**: Nicht zu verwechseln mit der *Lösungsbewertung (Solution Grading)*, die numerische 0–10-Noten für Lösungs-Optionen vergibt (`evaluate_grade`), und nicht mit dem Laufzeit-PR-Review-Prozess selbst.
+
+### Gold-Standard (Gold Standard)
+* **Definition**: Ein Datensatz menschlich annotierter Beispiele (Diffs mit erwartetem Verdict und Score), gegen den ein Judge-Modell kalibriert wird.
+* **Geschäftsregeln**: Jedes Sample enthält ein erwartetes binäres `passed`-Urteil und einen erwarteten Score (0.0/1.0 für binäre PR-Judges). Die Samples liegen als Fixtures unter `tests/eval/fixtures/<judge_type>/` vor.
+* **Synonyme / Abzugrenzende Begriffe**: Nicht zu verwechseln mit *Entwurfs-Aufgaben (Draft Issues)*, die zu veredelnde Arbeitspakete sind.
+
+### Hard Flip
+* **Definition**: Ein Sample, bei dem das `passed`-Urteil des Judge-Modells vom `passed`-Urteil des Gold-Standards abweicht — also der Modellwechsel das Verdict gekippt hat.
+* **Geschäftsregeln**: Hard Flips werden unabhängig vom MAE separat ausgewiesen, da ein gekipptes Pass/Fail-Urteil (Merge-Blockade vs. Freigabe) geschäftlich folgenreicher ist als eine numerische Abweichung.
+* **Synonyme / Abzugrenzende Begriffe**: Abzugrenzen vom MAE, der die mittlere absolute Score-Differenz misst.
+
+### Verbosity Bias
+* **Definition**: Die Korrelation zwischen der Diff-Länge (Token) und der Score-Differenz zwischen Judge und Gold-Standard. Er zeigt an, ob ein Judge-Modell längere Diffs systematisch anders bewertet.
+* **Geschäftsregeln**: Bei einem Pearson-Korrelationskoeffizienten r > 0.3 wird der Bias als flagriert markiert.
+* **Synonyme / Abzugrenzende Begriffe**: Nicht zu verwechseln mit der allgemeinen Modellqualität; ein Verbosity Bias ist ein Kalibrierungs-Artefakt, kein inhaltliches Urteil.
+
+### Time-to-First-Token (TTFT)
+* **Definition**: Die Zeitspanne zwischen dem Absenden einer OpenRouter-Anfrage und dem Empfang des ersten generierten Token.
+* **Geschäftsregeln**: Wird client-seitig über Streaming (SSE) direkt gegen OpenRouter gemessen. Wenn ein Judge-Modell kein Streaming unterstützt, ist TTFT undefiniert und wird als `null` (nicht 0) protokolliert.
+* **Synonyme / Abzugrenzende Begriffe**: Abzugrenzen von der Gesamtlatenz; TTFT erfasst ausschließlich den First-Byte-Anteil.
 
 
 

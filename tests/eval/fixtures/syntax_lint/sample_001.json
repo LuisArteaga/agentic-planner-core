@@ -1,0 +1,11 @@
+{
+  "id": "syntax_pass_clean",
+  "diff": "diff --git a/app/customer.py b/app/customer.py\nnew file mode 100644\n--- /dev/null\n+++ b/app/customer.py\n@@ -0,0 +1,5 @@\n+class HubCustomer:\n+    \"\"\"Data Vault hub for the customer entity.\"\"\"\n+\n+    def __init__(self, customer_id: str):\n+        self.customer_id = customer_id\n",
+  "expected_passed": true,
+  "expected_score": 1.0,
+  "expected_verdict": "PASS",
+  "diff_token_count": 60,
+  "metadata": {
+    "description": "Clean new file with valid syntax and Hub_ naming convention."
+  }
+}
