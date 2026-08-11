@@ -1,0 +1,102 @@
+name: Issue schema enforcement
+
+# Server-side enforcement of the `Task` issue template (issue #39).
+# GitHub Issue Forms only enforce their schema in the web UI; this workflow
+# restores the contract for issues created via the REST API or external clients.
+
+on:
+  issues:
+    types: [opened, edited, reopened]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write
+
+# Serialize per-issue runs so rapid edits cannot race.
+concurrency:
+  group: issue-schema-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate issue schema
+    runs-on: ubuntu-latest
+    # LOOP-PREVENTION INVARIANT:
+    # This workflow NEVER edits an issue's body or title. It only comments,
+    # labels, and closes/reopens. Those operations fire `issue_comment`,
+    # `labeled`, and `closed`/`reopened` events — none of which this workflow
+    # listens to (`opened`, `edited`, `reopened`). Because it never produces an
+    # `edited` event, it cannot re-trigger itself. Do not add a step that
+    # edits the issue body or title without revisiting this invariant.
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up Python
+        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b # v5.3.0
+        with:
+          python-version: "3.12"
+
+      - name: Write issue body to file
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: printf '%s' "$ISSUE_BODY" > /tmp/issue_body.md
+
+      - name: Validate issue body against template
+        id: validate
+        run: |
+          set +e
+          python3 scripts/issue_schema.py \
+            --template .github/ISSUE_TEMPLATE/task.yml \
+            --body-file /tmp/issue_body.md \
+            --comment-file /tmp/comment.md > /tmp/result.json
+          code=$?
+          echo "valid=$([ $code -eq 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "::group::Validation report"
+          cat /tmp/result.json
+          echo "::endgroup::"
+
+      - name: Reject non-compliant issue
+        if: steps.validate.outputs.valid != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          # Ensure the `invalid` label exists (idempotent).
+          gh label create invalid \
+            --color D73A4A \
+            --description "Issue does not conform to the required schema template" \
+            2>/dev/null || true
+
+          # Only comment on the open -> closed transition to avoid spamming
+          # the thread on every edit-while-still-invalid.
+          state=$(gh issue view "$ISSUE_NUMBER" --json state -q .state)
+
+          gh issue close "$ISSUE_NUMBER" --reason "not planned"
+          gh issue edit "$ISSUE_NUMBER" --add-label invalid
+
+          if [ "$state" = "OPEN" ]; then
+            gh issue comment "$ISSUE_NUMBER" --body-file /tmp/comment.md
+          fi
+
+      - name: Reopen previously-rejected issue now compliant
+        if: steps.validate.outputs.valid == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_AUTHOR: ${{ github.event.issue.user.login }}
+        run: |
+          # Only undo OUR rejection: act only when the `invalid` marker label
+          # is still present.
+          has_invalid=$(gh issue view "$ISSUE_NUMBER" --json labels -q '.labels[].name' \
+            | grep -qx invalid && echo yes || echo no)
+
+          if [ "$has_invalid" = "yes" ]; then
+            gh issue edit "$ISSUE_NUMBER" --remove-label invalid
+            state=$(gh issue view "$ISSUE_NUMBER" --json state -q .state)
+            if [ "$state" = "CLOSED" ]; then
+              gh issue reopen "$ISSUE_NUMBER"
+            fi
+            gh issue comment "$ISSUE_NUMBER" --body "Thanks @$ISSUE_AUTHOR — this issue now conforms to the required schema. Reopening ✅"
+          fi
