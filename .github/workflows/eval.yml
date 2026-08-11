@@ -67,30 +67,49 @@ jobs:
 
       - name: Resolve judge list
         id: judges
+        env:
+          JUDGE_INPUT: ${{ inputs.judge_type }}
         run: |
-          jt="${{ inputs.judge_type }}"
-          if [ -z "$jt" ]; then jt="all"; fi
+          # Validate against an allowlist to prevent shell injection via user input.
+          jt="$JUDGE_INPUT"
+          case "$jt" in
+            ""|"all") jt="all" ;;
+            syntax_lint|test_coverage|architecture|security|evaluate_grade) ;;
+            *)
+              echo "::error::Invalid judge_type. Allowed: syntax_lint, test_coverage, architecture, security, evaluate_grade, all"
+              exit 1
+              ;;
+          esac
           echo "list=$jt" >> "$GITHUB_OUTPUT"
 
       - name: Run eval suite
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           GITHUB_WORKSPACE: ${{ github.workspace }}
+          MODEL_INPUT: ${{ inputs.model }}
+          JUDGE_LIST: ${{ steps.judges.outputs.list }}
         run: |
-          model_arg="${{ inputs.model }}"
-          model_flag=""
-          if [ -n "$model_arg" ]; then model_flag="--model $model_arg"; fi
+          # Validate model id against a safe character set (no shell metacharacters).
+          model_arg="$MODEL_INPUT"
+          model_flag=()
+          if [ -n "$model_arg" ]; then
+            if ! printf '%s' "$model_arg" | grep -qE '^[a-zA-Z0-9._/-]+$'; then
+              echo "::error::Invalid model id: contains disallowed characters"
+              exit 1
+            fi
+            model_flag=(--model "$model_arg")
+          fi
 
-          jt="${{ steps.judges.outputs.list }}"
+          jt="$JUDGE_LIST"
           if [ "$jt" = "all" ]; then
             for j in syntax_lint test_coverage architecture security; do
               echo "::group::Eval: $j"
-              python -m planner eval --judge "$j" $model_flag \
+              python -m planner eval --judge "$j" "${model_flag[@]}" \
                 --results-json "results_${j}.json" || echo "::warning::Eval for $j failed"
               echo "::endgroup::"
             done
           else
-            python -m planner eval --judge "$jt" $model_flag \
+            python -m planner eval --judge "$jt" "${model_flag[@]}" \
               --results-json "results_${jt}.json"
           fi
 
