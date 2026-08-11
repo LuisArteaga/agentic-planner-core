@@ -312,3 +312,56 @@ def test_call_llm_for_review_empty_response_content(mock_urlopen):
     # It should raise an Exception because choices content is empty/blank
     with pytest.raises(Exception, match="OpenRouter response message content is empty"):
         call_llm_for_review("syntax_lint", "system prompt", "diff content", "api_key")
+
+
+def test_review_needs_review_blocks_merge(mock_env):
+    """A 'Needs Review' verdict must block the merge (ADR-0014).
+
+    Uses `with patch(...)` context managers (no @decorators) to keep the diff
+    free of '@' tokens that the test_coverage judge receives as '[EMAIL]'.
+    Each judge returns content with no <reasoning>/<findings> tags ->
+    "Needs Review" verdict -> status NEEDS REVIEW -> overall_failed ->
+    request-changes -> exit 1.
+    """
+    # Content present but no <reasoning>/<findings> tags -> "Needs Review".
+    no_tag_resp = make_mock_openrouter_response("I cannot review this unclear diff.")
+    urlopen_side = [make_mock_response(no_tag_resp) for _ in range(4)]
+
+    with (
+        patch(
+            "sys.stdin",
+            new_callable=lambda: StringIO("diff --git a/f.py b/f.py\n+x=1\n"),
+        ),
+        patch("urllib.request.urlopen", side_effect=urlopen_side),
+        patch(
+            "requests.Session.get",
+            side_effect=[
+                MagicMock(
+                    json=lambda: {"user": {"login": "developer"}},
+                    raise_for_status=lambda: None,
+                ),
+                MagicMock(
+                    json=lambda: {"login": "reviewer-bot"},
+                    raise_for_status=lambda: None,
+                ),
+            ],
+        ),
+        patch("requests.Session.post") as mock_post,
+    ):
+        mock_post.return_value = MagicMock(
+            json=lambda: {"status": "success"}, raise_for_status=lambda: None
+        )
+        with pytest.raises(SystemExit) as excinfo:
+            main()
+
+    assert excinfo.value.code == 1
+
+    payload = mock_post.call_args[1]["json"]
+    assert payload["event"] == "REQUEST_CHANGES"
+
+    body = payload["body"]
+    assert "⚠️ NEEDS REVIEW" in body
+    assert "syntax_lint: NEEDS REVIEW" in body
+    assert "test_coverage: NEEDS REVIEW" in body
+    assert "security: NEEDS REVIEW" in body
+    assert "architecture: NEEDS REVIEW" in body

@@ -660,6 +660,8 @@ def main():
 
                     if verdict == "Pass":
                         judge_info["status"] = "PASS"
+                    elif verdict == "Needs Review":
+                        judge_info["status"] = "NEEDS REVIEW"
                     else:
                         judge_info["status"] = "FAIL"
 
@@ -707,6 +709,8 @@ def main():
                 status_emoji = "✅ PASS"
             elif status == "FAIL":
                 status_emoji = "❌ FAIL"
+            elif status == "NEEDS REVIEW":
+                status_emoji = "⚠️ NEEDS REVIEW"
             else:
                 status_emoji = "⏭️ SKIPPED"
 
@@ -717,6 +721,8 @@ def main():
                     details = f"Check failed to run: {info['error']}"
                 else:
                     details = f"{len(info['findings'])} violations found."
+            elif status == "NEEDS REVIEW":
+                details = "Judge lacked context to verify."
             else:
                 details = "All criteria passed."
 
@@ -733,9 +739,12 @@ def main():
                 continue
 
             report_lines.append(f"### ➡️ {info['name']} (`{key}`)")
-            report_lines.append(
-                f"* **Status**: {'✅ PASS' if info['status'] == 'PASS' else '❌ FAIL'}"
-            )
+            status_label = {
+                "PASS": "✅ PASS",
+                "FAIL": "❌ FAIL",
+                "NEEDS REVIEW": "⚠️ NEEDS REVIEW",
+            }.get(info["status"], "⏭️ SKIPPED")
+            report_lines.append(f"* **Status**: {status_label}")
 
             # Resolve individual Q statuses
             q_status = {}
@@ -784,8 +793,11 @@ def main():
         hidden_lines.append("-->")
         combined_report += "\n" + "\n".join(hidden_lines)
 
-        # Determine overall success / failure
-        overall_failed = any(info["status"] == "FAIL" for info in judges_data.values())
+        # Determine overall success / failure.
+        # Per ADR-0014, both FAIL and NEEDS REVIEW block the merge.
+        overall_failed = any(
+            info["status"] in ("FAIL", "NEEDS REVIEW") for info in judges_data.values()
+        )
         review_action = "request-changes" if overall_failed else "approve"
 
         try:
