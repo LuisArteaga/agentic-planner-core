@@ -216,6 +216,4 @@ def _usage_to_metrics(
 
 def _backoff(attempt: int) -> None:
     """Exponential backoff: 4, 8, 16 seconds (mirrors review.py)."""
-    import time as _time
-
-    _time.sleep((2**attempt) * 4)
+    time.sleep((2**attempt) * 4)
