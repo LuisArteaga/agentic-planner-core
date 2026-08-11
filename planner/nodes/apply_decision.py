@@ -2,17 +2,32 @@ import os
 import logging
 import datetime
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from pydantic import BaseModel, Field
 from langchain_core.messages import SystemMessage, HumanMessage
 from opentelemetry import trace
 from planner.state import RefinementState
 from scripts.telemetry import orchestrator_phase
 from planner.nodes.evaluate_grade import load_adrs
-from planner.config import get_llm
+from planner.config import get_llm, resolve_model_config
 
 
 logger = logging.getLogger("planner.nodes.apply_decision")
+
+
+def _extract_finish_reason(raw_msg: Any) -> Optional[str]:
+    """Best-effort extraction of the provider ``finish_reason`` from a raw AIMessage.
+
+    With ``include_raw=True``, LangChain returns the underlying ``AIMessage`` as
+    ``raw``. OpenRouter/OpenAI-compatible providers surface ``finish_reason``
+    (``stop`` | ``length`` | ``tool_calls`` | ...) in ``response_metadata``.
+    """
+    if raw_msg is None:
+        return None
+    meta = getattr(raw_msg, "response_metadata", None) or {}
+    if isinstance(meta, dict):
+        return meta.get("finish_reason")
+    return None
 
 
 class AgDROption(BaseModel):
@@ -179,11 +194,16 @@ def apply_decision_node(state: RefinementState) -> Dict[str, Any]:
         if existing_agdrs:
             combined_decisions += f"Existing agent AgDRs:\n{existing_agdrs}\n\n"
 
-        # 2. Configure model using get_llm
+        # 2. Configure model using get_llm with an explicit, configurable
+        # max_tokens so the large implementation-ready payload is not truncated
+        # at the provider default (#56). ``strict=True`` forces schema adherence
+        # via function calling (supported by OpenRouter, see ADR-0003).
+        base_max_tokens = resolve_model_config("apply_decision")["max_tokens"] or 16384
+        current_max_tokens = base_max_tokens
         model = get_llm("apply_decision")
 
         structured_model = model.with_structured_output(
-            ApplyDecisionOutput, include_raw=True
+            ApplyDecisionOutput, include_raw=True, strict=True
         )
 
         # 3. Formulate prompts
@@ -254,34 +274,33 @@ def apply_decision_node(state: RefinementState) -> Dict[str, Any]:
         response_data = None
         last_error = None
 
-        # Execute LLM call with retry loop (up to 3 times)
+        # Execute LLM call with retry loop (up to 3 times).
+        # On a parse failure we distinguish truncation (finish_reason == "length")
+        # from malformed JSON: truncation bumps max_tokens and rebuilds the model;
+        # malformed JSON re-prompts with the parsing error (#56).
         for attempt in range(1, 4):
             try:
                 logger.info(f"Structured decision attempt {attempt}/3...")
                 if attempt == 1:
-                    response = structured_model.invoke(
-                        [
-                            SystemMessage(content=system_instruction),
-                            HumanMessage(content=user_message),
-                        ]
-                    )
+                    content = user_message
                 else:
-                    retry_message = (
+                    content = (
                         f"{user_message}\n\n"
                         f"WARNING: Your previous attempt failed with error:\n"
                         f"{last_error}\n"
                         f"Please correct the error and output valid JSON matching the schema."
                     )
-                    response = structured_model.invoke(
-                        [
-                            SystemMessage(content=system_instruction),
-                            HumanMessage(content=retry_message),
-                        ]
-                    )
+                response = structured_model.invoke(
+                    [
+                        SystemMessage(content=system_instruction),
+                        HumanMessage(content=content),
+                    ]
+                )
 
                 if response and isinstance(response, dict):
                     parsed_val = response.get("parsed")
                     raw_msg = response.get("raw")
+                    parsing_error = response.get("parsing_error")
                     if isinstance(parsed_val, ApplyDecisionOutput):
                         response_data = parsed_val
                         if (
@@ -295,6 +314,33 @@ def apply_decision_node(state: RefinementState) -> Dict[str, Any]:
                             prompt_tokens = token_usage.get("prompt_tokens", 0)
                             completion_tokens = token_usage.get("completion_tokens", 0)
                         break
+
+                    # Parse failure: classify by finish_reason and log it.
+                    finish_reason = _extract_finish_reason(raw_msg)
+                    last_error = (
+                        str(parsing_error)
+                        if parsing_error
+                        else f"parsed value was not ApplyDecisionOutput "
+                        f"(finish_reason={finish_reason})"
+                    )
+                    if finish_reason == "length":
+                        logger.warning(
+                            f"Attempt {attempt} truncated (finish_reason=length); "
+                            f"retrying with larger max_tokens."
+                        )
+                        current_max_tokens = current_max_tokens * 2
+                        model = get_llm(
+                            "apply_decision",
+                            max_tokens_override=current_max_tokens,
+                        )
+                        structured_model = model.with_structured_output(
+                            ApplyDecisionOutput, include_raw=True, strict=True
+                        )
+                    else:
+                        logger.warning(
+                            f"Attempt {attempt} malformed output "
+                            f"(finish_reason={finish_reason}): {last_error}"
+                        )
             except Exception as e:
                 logger.warning(f"Attempt {attempt} failed: {e}")
                 last_error = str(e)

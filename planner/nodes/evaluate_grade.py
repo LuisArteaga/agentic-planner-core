@@ -1,6 +1,6 @@
 import logging
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from pydantic import BaseModel, Field
 from langchain_core.messages import SystemMessage, HumanMessage
 from planner.state import RefinementState
@@ -9,6 +9,16 @@ from planner.config import get_llm
 
 
 logger = logging.getLogger("planner.nodes.evaluate_grade")
+
+
+def _extract_finish_reason(raw_msg: Any) -> Optional[str]:
+    """Best-effort extraction of the provider ``finish_reason`` from a raw AIMessage."""
+    if raw_msg is None:
+        return None
+    meta = getattr(raw_msg, "response_metadata", None) or {}
+    if isinstance(meta, dict):
+        return meta.get("finish_reason")
+    return None
 
 
 class GradingOption(BaseModel):
@@ -85,9 +95,10 @@ def evaluate_grade_node(state: RefinementState) -> Dict[str, Any]:
         # Instantiate Critic LLM using get_llm
         model = get_llm("evaluate_grade")
 
-        # Set up structured output including raw message for token metadata
+        # Set up structured output including raw message for token metadata.
+        # ``strict=True`` forces schema adherence via function calling (#56).
         structured_model = model.with_structured_output(
-            CriticEvaluation, include_raw=True
+            CriticEvaluation, include_raw=True, strict=True
         )
 
         system_instruction = (
@@ -126,36 +137,34 @@ def evaluate_grade_node(state: RefinementState) -> Dict[str, Any]:
         last_error = None
         evaluation_result = None
 
-        # Custom in-node retry loop (up to 3 attempts)
+        # Custom in-node retry loop (up to 3 attempts).
+        # On a parse failure we distinguish truncation (finish_reason == "length")
+        # from malformed JSON and log finish_reason (#56).
         for attempt in range(1, 4):
             try:
                 logger.info(f"Structured evaluation attempt {attempt}/3...")
                 if attempt == 1:
-                    response = structured_model.invoke(
-                        [
-                            SystemMessage(content=system_instruction),
-                            HumanMessage(content=user_message),
-                        ]
-                    )
+                    content = user_message
                 else:
                     # Retry prompting with error info
-                    retry_user_message = (
+                    content = (
                         f"{user_message}\n\n"
                         f"WARNING: Your previous attempt failed validation with the following error:\n"
                         f"{last_error}\n"
                         f"Please correct any formatting/schema errors and output a valid JSON structure matching the schema."
                     )
-                    response = structured_model.invoke(
-                        [
-                            SystemMessage(content=system_instruction),
-                            HumanMessage(content=retry_user_message),
-                        ]
-                    )
+                response = structured_model.invoke(
+                    [
+                        SystemMessage(content=system_instruction),
+                        HumanMessage(content=content),
+                    ]
+                )
 
                 # If successful, extract parsed output and raw response metadata
                 if response and isinstance(response, dict):
                     parsed_val = response.get("parsed")
                     raw_msg = response.get("raw")
+                    parsing_error = response.get("parsing_error")
                     if isinstance(parsed_val, CriticEvaluation):
                         evaluation_result = parsed_val
                         if (
@@ -170,7 +179,17 @@ def evaluate_grade_node(state: RefinementState) -> Dict[str, Any]:
                             completion_tokens = token_usage.get("completion_tokens", 0)
                         break
                     else:
-                        last_error = f"Parsed value was not a CriticEvaluation instance (it was {type(parsed_val)}: {parsed_val})"
+                        finish_reason = _extract_finish_reason(raw_msg)
+                        last_error = (
+                            str(parsing_error)
+                            if parsing_error
+                            else f"Parsed value was not a CriticEvaluation instance "
+                            f"(finish_reason={finish_reason})"
+                        )
+                        logger.warning(
+                            f"Attempt {attempt} malformed output "
+                            f"(finish_reason={finish_reason}): {last_error}"
+                        )
 
             except Exception as e:
                 logger.warning(f"Attempt {attempt} failed with error: {e}")

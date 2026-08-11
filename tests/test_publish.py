@@ -296,10 +296,13 @@ class MasterGraphErrorHandlingTests(unittest.TestCase):
                 "status": "idle",
             }
 
-            # This should not raise an exception, but return status = "failed"
+            # This must not raise (ADR-0005 fault isolation). The failure is
+            # recorded in failed_drafts (honest partial-run signal, #56) rather
+            # than an overwriteable ``status`` field.
             result = run_refinement_subgraph_node(state)
             self.assertEqual(result["current_issue_index"], 1)
-            self.assertEqual(result["status"], "failed")
+            self.assertEqual(result["failed_drafts"], [str(draft_file)])
+            self.assertEqual(result["succeeded_drafts"], [])
 
 
 class MainRateLimitTests(unittest.TestCase):

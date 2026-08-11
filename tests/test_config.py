@@ -257,6 +257,7 @@ def test_get_llm_construction(clean_env):
             "routing": ["Together", "Novita"],
             "temperature": 0.2,
             "options": {"thinking": "max"},
+            "max_tokens": 16384,
         }
 
         # Mock the OpenRouter-aware subclass to avoid real instantiation overhead
@@ -270,6 +271,7 @@ def test_get_llm_construction(clean_env):
             called_kwargs = mock_cls.call_args[1]
             assert called_kwargs["model"] == "deepseek/deepseek-v4-pro"
             assert called_kwargs["temperature"] == 0.2
+            assert called_kwargs["max_tokens"] == 16384
             assert called_kwargs["openai_api_base"] == "https://openrouter.ai/api/v1"
             assert called_kwargs["openai_api_key"] == "test-key"
             assert called_kwargs["use_responses_api"] is False
@@ -283,6 +285,21 @@ def test_get_llm_construction(clean_env):
             }
             assert extra_body["thinking"] == "max"
             assert "extra_body" not in (called_kwargs.get("model_kwargs") or {})
+
+    # An explicit max_tokens_override takes precedence over the configured value
+    # (used by the apply_decision retry loop on truncation, #56).
+    with patch("planner.config.resolve_model_config") as mock_resolve:
+        mock_resolve.return_value = {
+            "model": "deepseek/deepseek-v4-pro",
+            "routing": None,
+            "temperature": 0.2,
+            "options": None,
+            "max_tokens": 16384,
+        }
+        with patch("planner.config.OpenRouterAnnotationChatOpenAI") as mock_cls:
+            mock_cls.return_value = MagicMock()
+            get_llm("apply_decision", max_tokens_override=32768)
+            assert mock_cls.call_args[1]["max_tokens"] == 32768
 
 
 def test_search_config_parsing_and_overlap(clean_env, caplog):
