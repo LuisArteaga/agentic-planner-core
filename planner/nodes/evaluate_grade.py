@@ -1,24 +1,15 @@
 import logging
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List
 from pydantic import BaseModel, Field
 from langchain_core.messages import SystemMessage, HumanMessage
 from planner.state import RefinementState
+from planner.utils import extract_finish_reason
 from scripts.telemetry import orchestrator_phase
 from planner.config import get_llm
 
 
 logger = logging.getLogger("planner.nodes.evaluate_grade")
-
-
-def _extract_finish_reason(raw_msg: Any) -> Optional[str]:
-    """Best-effort extraction of the provider ``finish_reason`` from a raw AIMessage."""
-    if raw_msg is None:
-        return None
-    meta = getattr(raw_msg, "response_metadata", None) or {}
-    if isinstance(meta, dict):
-        return meta.get("finish_reason")
-    return None
 
 
 class GradingOption(BaseModel):
@@ -179,7 +170,7 @@ def evaluate_grade_node(state: RefinementState) -> Dict[str, Any]:
                             completion_tokens = token_usage.get("completion_tokens", 0)
                         break
                     else:
-                        finish_reason = _extract_finish_reason(raw_msg)
+                        finish_reason = extract_finish_reason(raw_msg)
                         last_error = (
                             str(parsing_error)
                             if parsing_error

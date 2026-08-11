@@ -1,5 +1,6 @@
 import re
 from pathlib import Path
+from typing import Any, Optional
 
 
 def extract_json_block(text: str) -> str:
@@ -16,6 +17,24 @@ def extract_json_block(text: str) -> str:
     if match:
         return match.group(1).strip()
     return text.strip()
+
+
+def extract_finish_reason(raw_msg: Any) -> Optional[str]:
+    """Best-effort extraction of the provider ``finish_reason`` from a raw AIMessage.
+
+    With ``include_raw=True``, LangChain returns the underlying ``AIMessage`` as
+    ``raw``. OpenRouter/OpenAI-compatible providers surface ``finish_reason``
+    (``stop`` | ``length`` | ``tool_calls`` | ...) in ``response_metadata``.
+    Shared by the structured-output retry loops of ``apply_decision`` and
+    ``evaluate_grade`` so truncation (``length``) can be distinguished from
+    malformed JSON (#56).
+    """
+    if raw_msg is None:
+        return None
+    meta = getattr(raw_msg, "response_metadata", None) or {}
+    if isinstance(meta, dict):
+        return meta.get("finish_reason")
+    return None
 
 
 def validate_draft_path(filepath: str, workspace_dir: Path) -> Path:

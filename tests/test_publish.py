@@ -350,3 +350,108 @@ class MainRateLimitTests(unittest.TestCase):
             main()
             mock_exit.assert_called_once_with(1)
             mock_graph.invoke.assert_not_called()
+
+
+class MainRefineStatusTests(unittest.TestCase):
+    """Tests for the terminal batch-status derivation and exit code in the
+    ``refine`` CLI command (#56). A partial run must print ``status: partial``,
+    list the skipped drafts, and exit non-zero; a full success must print
+    ``status: success`` and exit 0."""
+
+    def _config_with_rate_limit(self, mock_config_class, remaining=100):
+        mock_config = MagicMock()
+        mock_config.gh_pat = "mock-token"
+        mock_config.github_repository = "org/repo"
+        mock_config.github_workspace = "/workspace"
+        mock_config.sources.strict = False
+        mock_config.sources.domains = []
+        mock_config.sources.urls = []
+        mock_config_class.return_value = mock_config
+
+        # A real int ``remaining`` >= required so the rate-limit guard passes and
+        # graph.invoke is reached. (Auto-MagicMock would be truthy and abort.)
+        mock_session = MagicMock()
+        mock_rate_response = MagicMock()
+        mock_rate_response.json.return_value = {
+            "resources": {"core": {"remaining": remaining}}
+        }
+        mock_session.get.return_value = mock_rate_response
+        mock_config.get_github_session.return_value = mock_session
+        return mock_config
+
+    @patch("planner.__main__.graph")
+    @patch("planner.__main__.AppConfig")
+    @patch("planner.__main__.glob.glob")
+    @patch("planner.__main__.Path")
+    @patch("planner.cli_planning.ConsoleLoggingHandler")
+    def test_main_refine_success_exits_zero(
+        self, mock_handler, mock_path, mock_glob, mock_config_class, mock_graph
+    ):
+        self._config_with_rate_limit(mock_config_class)
+        mock_glob.return_value = [
+            "/workspace/.planner/drafts/org/repo/0001-issue.md",
+            "/workspace/.planner/drafts/org/repo/0002-issue.md",
+        ]
+        mock_path_instance = MagicMock()
+        mock_path_instance.exists.return_value = True
+        mock_path.return_value = mock_path_instance
+
+        mock_graph.invoke.return_value = {
+            "succeeded_drafts": [
+                "/workspace/.planner/drafts/org/repo/0001-issue.md",
+                "/workspace/.planner/drafts/org/repo/0002-issue.md",
+            ],
+            "failed_drafts": [],
+        }
+
+        from planner.__main__ import main
+        import io
+        import contextlib
+
+        buf = io.StringIO()
+        with patch("sys.argv", ["planner", "refine"]), patch("sys.exit") as mock_exit:
+            with contextlib.redirect_stdout(buf):
+                main()
+            mock_exit.assert_not_called()
+            mock_graph.invoke.assert_called_once()
+
+        self.assertIn("status: success", buf.getvalue())
+
+    @patch("planner.__main__.graph")
+    @patch("planner.__main__.AppConfig")
+    @patch("planner.__main__.glob.glob")
+    @patch("planner.__main__.Path")
+    @patch("planner.cli_planning.ConsoleLoggingHandler")
+    def test_main_refine_partial_exits_nonzero(
+        self, mock_handler, mock_path, mock_glob, mock_config_class, mock_graph
+    ):
+        self._config_with_rate_limit(mock_config_class)
+        mock_glob.return_value = [
+            "/workspace/.planner/drafts/org/repo/0001-issue.md",
+            "/workspace/.planner/drafts/org/repo/0002-issue.md",
+        ]
+        mock_path_instance = MagicMock()
+        mock_path_instance.exists.return_value = True
+        mock_path.return_value = mock_path_instance
+
+        failed_path = "/workspace/.planner/drafts/org/repo/0001-issue.md"
+        mock_graph.invoke.return_value = {
+            "succeeded_drafts": ["/workspace/.planner/drafts/org/repo/0002-issue.md"],
+            "failed_drafts": [failed_path],
+        }
+
+        from planner.__main__ import main
+        import io
+        import contextlib
+
+        buf = io.StringIO()
+        with patch("sys.argv", ["planner", "refine"]), patch("sys.exit") as mock_exit:
+            with contextlib.redirect_stdout(buf):
+                main()
+            mock_exit.assert_called_once_with(1)
+            mock_graph.invoke.assert_called_once()
+
+        output = buf.getvalue()
+        self.assertIn("status: partial", output)
+        # The skipped draft path must be listed for the operator.
+        self.assertIn(failed_path, output)

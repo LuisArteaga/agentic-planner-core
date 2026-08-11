@@ -2,7 +2,7 @@ import os
 import logging
 import datetime
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List
 from pydantic import BaseModel, Field
 from langchain_core.messages import SystemMessage, HumanMessage
 from opentelemetry import trace
@@ -10,24 +10,10 @@ from planner.state import RefinementState
 from scripts.telemetry import orchestrator_phase
 from planner.nodes.evaluate_grade import load_adrs
 from planner.config import get_llm, resolve_model_config
+from planner.utils import extract_finish_reason
 
 
 logger = logging.getLogger("planner.nodes.apply_decision")
-
-
-def _extract_finish_reason(raw_msg: Any) -> Optional[str]:
-    """Best-effort extraction of the provider ``finish_reason`` from a raw AIMessage.
-
-    With ``include_raw=True``, LangChain returns the underlying ``AIMessage`` as
-    ``raw``. OpenRouter/OpenAI-compatible providers surface ``finish_reason``
-    (``stop`` | ``length`` | ``tool_calls`` | ...) in ``response_metadata``.
-    """
-    if raw_msg is None:
-        return None
-    meta = getattr(raw_msg, "response_metadata", None) or {}
-    if isinstance(meta, dict):
-        return meta.get("finish_reason")
-    return None
 
 
 class AgDROption(BaseModel):
@@ -316,7 +302,7 @@ def apply_decision_node(state: RefinementState) -> Dict[str, Any]:
                         break
 
                     # Parse failure: classify by finish_reason and log it.
-                    finish_reason = _extract_finish_reason(raw_msg)
+                    finish_reason = extract_finish_reason(raw_msg)
                     last_error = (
                         str(parsing_error)
                         if parsing_error
