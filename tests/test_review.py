@@ -554,3 +554,33 @@ def test_enrich_diff_no_hunks_returns_diff_unchanged():
     # hunks: enrichment must be a no-op so those tests stay green.
     diff = "diff --git a/file.py b/file.py\n+class HubCustomer:\n+    pass"
     assert enrich_diff_with_function_context(diff, ".") == diff
+
+
+def test_enrich_diff_rejects_path_traversal(tmp_path):
+    """Security Q2 regression: a hunk whose file path attempts traversal
+    (e.g. `../../etc/passwd`-style) must be skipped — the file outside the
+    workspace is never read."""
+    from scripts.review import enrich_diff_with_function_context
+
+    # A real file placed OUTSIDE the workspace to tempt the reader.
+    outside = tmp_path.parent / "secret.py"
+    outside.write_text("SECRET = 'leaked'\n", encoding="utf-8")
+    rel_escape = os.path.relpath(outside, str(tmp_path))
+
+    diff = (
+        "diff --git a/x.py b/x.py\n"
+        "--- a/x.py\n"
+        "+++ b/x.py\n"
+        "@@ -1,1 +1,1 @@\n-old\n+new\n"
+        "diff --git a/esc.py b/" + rel_escape.replace(os.sep, "/") + "\n"
+        "--- a/" + rel_escape.replace(os.sep, "/") + "\n"
+        "+++ b/" + rel_escape.replace(os.sep, "/") + "\n"
+        "@@ -1,1 +1,1 @@\n-S\n+S\n"
+    )
+    result = enrich_diff_with_function_context(diff, str(tmp_path))
+
+    # The escaped path must not contribute any context and the secret content
+    # must never appear in the enriched diff.
+    assert "SECRET" not in result
+    assert "leaked" not in result
+    assert "=== CONTEXT:" + rel_escape not in result

@@ -652,13 +652,24 @@ def enrich_diff_with_function_context(diff: str, workspace_dir: str) -> str:
 
     # file_path -> (file_lines, {enc_idx: (end_idx, name)})
     file_data: Dict[str, Tuple[List[str], Dict[int, Tuple[int, str]]]] = {}
+    workspace_resolved = os.path.realpath(workspace_dir)
     for file_path, new_start, new_count in hunks:
         if not file_path.endswith(".py") or file_path == "/dev/null":
             continue
         if file_path in file_data:
             file_lines = file_data[file_path][0]
         else:
-            full_path = os.path.join(workspace_dir, file_path)
+            # Path-traversal guard (INC-001 follow-up, security judge Q2):
+            # file_path is untrusted diff input. Resolve the joined path and
+            # reject anything that escapes workspace_dir (e.g. `../etc/passwd`).
+            full_path = os.path.realpath(os.path.join(workspace_dir, file_path))
+            if full_path != workspace_resolved and not full_path.startswith(
+                workspace_resolved + os.sep
+            ):
+                sys.stdout.write(
+                    f"[WARN] Skipping {file_path}: resolves outside workspace.\n"
+                )
+                continue
             if not os.path.isfile(full_path):
                 continue
             try:
