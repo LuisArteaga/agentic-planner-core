@@ -139,6 +139,8 @@ def main():
                     "allowed_domains": allowed_domains,
                     "search_params": search_params,
                     "status": "idle",
+                    "succeeded_drafts": [],
+                    "failed_drafts": [],
                 }
 
                 # Abort at startup if strict mode is enabled but whitelist is empty
@@ -181,9 +183,26 @@ def main():
                     result = graph.invoke(
                         initial_state, config={"callbacks": [handler]}
                     )
-                    print(
-                        f"Refinement process finished with status: {result.get('status')}"
-                    )
+                    # Derive the terminal batch status from the accumulated
+                    # per-draft outcomes rather than an overwriteable ``status``
+                    # field, so a partial run is reported honestly (#56).
+                    failed_drafts = result.get("failed_drafts", [])
+                    succeeded_drafts = result.get("succeeded_drafts", [])
+                    if failed_drafts:
+                        exit_code = 1
+                        print(
+                            f"Refinement process finished with status: partial "
+                            f"({len(succeeded_drafts)} succeeded, "
+                            f"{len(failed_drafts)} failed/skipped)"
+                        )
+                        print("Failed/skipped drafts (left on disk for rerun):")
+                        for draft_path in failed_drafts:
+                            print(f"  - {draft_path}")
+                    else:
+                        print(
+                            f"Refinement process finished with status: success "
+                            f"({len(succeeded_drafts)} draft(s) published)"
+                        )
                 else:
                     print("No draft issues found. Nothing to refine.")
         except Exception as e:

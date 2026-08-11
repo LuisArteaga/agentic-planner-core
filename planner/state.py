@@ -1,4 +1,5 @@
-from typing import TypedDict, List, Dict, Any
+import operator
+from typing import Annotated, TypedDict, List, Dict, Any
 
 
 class RefinementState(TypedDict, total=False):
@@ -18,8 +19,10 @@ class RefinementState(TypedDict, total=False):
     keywords: List[str]
     search_queries: List[str]
 
-    # Extracted search results from ToolMessages
-    search_results: List[Dict[str, Any]]
+    # Extracted search results from ToolMessages.
+    # Accumulation reducer: node returns append (never overwrite) so a future
+    # multi-query web_search refactor (#57) cannot silently drop earlier results.
+    search_results: Annotated[List[Dict[str, Any]], operator.add]
 
     # Telemetry and Token Tracking
     prompt_tokens: int
@@ -35,10 +38,12 @@ class RefinementState(TypedDict, total=False):
     # whole subgraph run so monitoring can distinguish a degraded search.
     web_search_error: str
 
-    # Critic Grading fields
-    proposed_options: List[Dict[str, Any]]
+    # Critic Grading fields.
+    # ``proposed_options`` and ``all_grades`` use accumulation reducers so node
+    # returns append rather than overwrite, closing the silent-drop class (#56).
+    proposed_options: Annotated[List[Dict[str, Any]], operator.add]
     best_option: Dict[str, Any]
-    all_grades: List[Dict[str, Any]]
+    all_grades: Annotated[List[Dict[str, Any]], operator.add]
 
 
 class AgentState(TypedDict, total=False):
@@ -53,5 +58,12 @@ class AgentState(TypedDict, total=False):
     allowed_domains: List[str]
     search_params: Dict[str, Any]
 
-    # Overall status
+    # Overall status (last-iteration value; the terminal batch status is computed
+    # from ``succeeded_drafts`` / ``failed_drafts`` in the CLI entrypoint).
     status: str
+
+    # Per-draft outcomes accumulated across master-loop iterations via reducers.
+    # A single overwriteable ``status`` previously hid mid-loop failures (#56);
+    # these lists make partial runs honest and drive the terminal exit code.
+    succeeded_drafts: Annotated[List[str], operator.add]
+    failed_drafts: Annotated[List[str], operator.add]

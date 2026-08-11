@@ -302,3 +302,117 @@ class CriticGradingTests(unittest.TestCase):
             "Parsed value was not a CriticEvaluation instance",
             str(context.exception),
         )
+
+    @patch("planner.nodes.evaluate_grade.get_llm")
+    def test_evaluate_grade_strict_structured_output(self, mock_get_llm):
+        """``with_structured_output`` must be called with strict=True (#56)."""
+        mock_instance = MagicMock()
+        mock_get_llm.return_value = mock_instance
+        mock_structured_model = MagicMock()
+        mock_instance.with_structured_output.return_value = mock_structured_model
+
+        mock_eval_result = CriticEvaluation(
+            evaluations=[
+                GradingOption(
+                    choice_id="option_1",
+                    score=9.0,
+                    reasoning="Simple and fits ADRs.",
+                    checks={"Check 1.1": True},
+                )
+            ]
+        )
+        mock_raw_msg = MagicMock()
+        mock_raw_msg.response_metadata = {
+            "token_usage": {"prompt_tokens": 10, "completion_tokens": 20}
+        }
+        mock_structured_model.invoke.return_value = {
+            "parsed": mock_eval_result,
+            "raw": mock_raw_msg,
+        }
+
+        state: RefinementState = {
+            "draft_issue_content": "Add DB persistence to logs.",
+            "strict_mode": True,
+            "allowed_domains": ["github.com"],
+            "messages": [],
+            "keywords": [],
+            "search_queries": [],
+            "search_results": [],
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "model_name": "google/gemini-2.5-flash",
+            "status": "success",
+            "proposed_options": [
+                {"choice_id": "option_1", "name": "Simple func", "description": "fn"}
+            ],
+            "best_option": {},
+            "all_grades": [],
+        }
+
+        evaluate_grade_node(state)
+
+        _, kwargs = mock_instance.with_structured_output.call_args
+        self.assertTrue(kwargs.get("strict") is True)
+
+    @patch("planner.nodes.evaluate_grade.get_llm")
+    def test_evaluate_grade_malformed_output_logs_finish_reason(self, mock_get_llm):
+        """On a parse failure the retry must log finish_reason, distinguishing
+        truncation (length) from malformed JSON (#56)."""
+        mock_instance = MagicMock()
+        mock_get_llm.return_value = mock_instance
+        mock_structured_model = MagicMock()
+        mock_instance.with_structured_output.return_value = mock_structured_model
+
+        mock_eval_result = CriticEvaluation(
+            evaluations=[
+                GradingOption(
+                    choice_id="option_1",
+                    score=9.0,
+                    reasoning="Simple and fits ADRs.",
+                    checks={"Check 1.1": True},
+                )
+            ]
+        )
+        # Attempt 1: malformed (parsed=None) with finish_reason=length; attempt 2: success.
+        malformed_raw = MagicMock()
+        malformed_raw.response_metadata = {"finish_reason": "length"}
+        ok_raw = MagicMock()
+        ok_raw.response_metadata = {
+            "finish_reason": "stop",
+            "token_usage": {"prompt_tokens": 5, "completion_tokens": 5},
+        }
+        mock_structured_model.invoke.side_effect = [
+            {
+                "parsed": None,
+                "raw": malformed_raw,
+                "parsing_error": "EOF while parsing",
+            },
+            {"parsed": mock_eval_result, "raw": ok_raw},
+        ]
+
+        state: RefinementState = {
+            "draft_issue_content": "Add DB persistence to logs.",
+            "strict_mode": True,
+            "allowed_domains": ["github.com"],
+            "messages": [],
+            "keywords": [],
+            "search_queries": [],
+            "search_results": [],
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "model_name": "google/gemini-2.5-flash",
+            "status": "success",
+            "proposed_options": [
+                {"choice_id": "option_1", "name": "Simple func", "description": "fn"}
+            ],
+            "best_option": {},
+            "all_grades": [],
+        }
+
+        with self.assertLogs("planner.nodes.evaluate_grade", level="WARNING") as cm:
+            output = evaluate_grade_node(state)
+
+        self.assertEqual(output["status"], "success")
+        self.assertEqual(mock_structured_model.invoke.call_count, 2)
+        # finish_reason must appear in the warning log so truncation is distinguishable
+        self.assertTrue(any("finish_reason=length" in m for m in cm.output))

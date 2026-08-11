@@ -38,7 +38,7 @@ def run_refinement_subgraph_node(state: AgentState) -> dict:
     draft_issues = state.get("draft_issues", [])
 
     if idx >= len(draft_issues):
-        return {"status": "success"}
+        return {}
 
     draft_path = Path(draft_issues[idx])
     if not draft_path.exists():
@@ -67,18 +67,26 @@ def run_refinement_subgraph_node(state: AgentState) -> dict:
         "all_grades": [],
     }
 
-    # Execute the subgraph
+    # Execute the subgraph. Per ADR-0005, a single draft failure is isolated:
+    # it is recorded in ``failed_drafts`` (the draft stays on disk for a rerun)
+    # and the batch continues. The terminal batch status is derived from these
+    # accumulated lists in the CLI entrypoint rather than from an overwriteable
+    # ``status`` field, which previously hid mid-loop failures (#56).
+    draft_path_str = str(draft_path)
     try:
-        subgraph_output = refine_subgraph.invoke(subgraph_input)
-        status = subgraph_output.get("status", "success")
+        refine_subgraph.invoke(subgraph_input)
+        return {
+            "current_issue_index": idx + 1,
+            "succeeded_drafts": [draft_path_str],
+            "failed_drafts": [],
+        }
     except Exception as e:
         logger.error(f"Error processing draft issue {draft_path}: {e}", exc_info=True)
-        status = "failed"
-
-    return {
-        "current_issue_index": idx + 1,
-        "status": status,
-    }
+        return {
+            "current_issue_index": idx + 1,
+            "succeeded_drafts": [],
+            "failed_drafts": [draft_path_str],
+        }
 
 
 def should_continue(state: AgentState) -> str:

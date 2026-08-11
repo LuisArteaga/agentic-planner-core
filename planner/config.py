@@ -195,6 +195,7 @@ class ModelConfig(BaseModel):
     routing: Optional[List[str]] = None
     temperature: Optional[float] = None
     options: Optional[Dict[str, Any]] = None
+    max_tokens: Optional[int] = None
 
 
 class FactoryConfig(BaseModel):
@@ -369,6 +370,14 @@ def resolve_model_config(phase_or_node: str) -> dict:
         "security": {"thinking": "max"},
     }
 
+    # Generous per-node output caps so large structured payloads (e.g. the
+    # rewritten implementation-ready issue emitted by ``apply_decision``) are not
+    # truncated at the provider default (#56). Overridable via config/factory.json.
+    default_max_tokens = {
+        "apply_decision": 16384,
+        "evaluate_grade": 8192,
+    }
+
     if overridden_model:
         # Environment override active => disable specific provider routing (set to None)
         model = overridden_model
@@ -379,9 +388,11 @@ def resolve_model_config(phase_or_node: str) -> dict:
                 factory_cfg.temperature if factory_cfg.temperature is not None else 0.0
             )
             options = factory_cfg.options
+            max_tokens = factory_cfg.max_tokens
         else:
             temperature = 0.0
             options = default_options.get(phase_or_node)
+            max_tokens = default_max_tokens.get(phase_or_node)
     else:
         # Use factory config or fallback
         if factory_cfg:
@@ -391,17 +402,24 @@ def resolve_model_config(phase_or_node: str) -> dict:
                 factory_cfg.temperature if factory_cfg.temperature is not None else 0.0
             )
             options = factory_cfg.options
+            max_tokens = (
+                factory_cfg.max_tokens
+                if factory_cfg.max_tokens is not None
+                else default_max_tokens.get(phase_or_node)
+            )
         else:
             model = default_models.get(phase_or_node, "z-ai/glm-5.2")
             routing = default_routing.get(phase_or_node)
             temperature = 0.0
             options = default_options.get(phase_or_node)
+            max_tokens = default_max_tokens.get(phase_or_node)
 
     return {
         "model": model,
         "routing": routing,
         "temperature": temperature,
         "options": options,
+        "max_tokens": max_tokens,
     }
 
 
@@ -461,12 +479,21 @@ class OpenRouterAnnotationChatOpenAI(ChatOpenAI):
         return result
 
 
-def get_llm(phase_or_node: str) -> "ChatOpenAI":
+def get_llm(
+    phase_or_node: str, max_tokens_override: Optional[int] = None
+) -> "ChatOpenAI":
     cfg = resolve_model_config(phase_or_node)
     model_name = cfg["model"]
     routing = cfg["routing"]
     temperature = cfg["temperature"]
     options = cfg["options"]
+    # An explicit override (used by the apply_decision retry loop to bump the
+    # budget on truncation) takes precedence over the configured value.
+    max_tokens = (
+        max_tokens_override
+        if max_tokens_override is not None
+        else cfg.get("max_tokens")
+    )
 
     api_key = os.getenv("OPENROUTER_API_KEY")
 
@@ -482,6 +509,7 @@ def get_llm(phase_or_node: str) -> "ChatOpenAI":
     return OpenRouterAnnotationChatOpenAI(
         model=model_name,
         temperature=temperature,
+        max_tokens=max_tokens,
         openai_api_base="https://openrouter.ai/api/v1",
         openai_api_key=api_key,
         use_responses_api=False,

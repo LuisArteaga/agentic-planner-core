@@ -360,3 +360,146 @@ class ApplyDecisionTests(unittest.TestCase):
         # Each section must carry a non-empty description.
         for header, desc in IMPLEMENTATION_READY_SECTIONS:
             self.assertTrue(desc.strip(), f"Section {header} has no description")
+
+    @patch("planner.nodes.apply_decision.get_llm")
+    @patch("planner.nodes.apply_decision.resolve_model_config")
+    def test_apply_decision_strict_structured_output(self, mock_resolve, mock_get_llm):
+        """``with_structured_output`` must be called with strict=True (#56)."""
+        mock_resolve.return_value = {"max_tokens": 16384}
+        mock_instance = MagicMock()
+        mock_get_llm.return_value = mock_instance
+        mock_structured_model = MagicMock()
+        mock_instance.with_structured_output.return_value = mock_structured_model
+
+        mock_output = ApplyDecisionOutput(
+            requires_agdr=False,
+            agdr_title="",
+            y_statement="",
+            context_and_problem="",
+            drivers=[],
+            options_considered=[],
+            decision_rationale="",
+            consequences=AgDRConsequences(),
+            references=[],
+            updated_issue_content="## What to build\nOriginal content.",
+        )
+        mock_structured_model.invoke.return_value = {
+            "parsed": mock_output,
+            "raw": MagicMock(),
+        }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            os.environ["GITHUB_WORKSPACE"] = str(workspace)
+            draft_issue = workspace / "0005-issue.md"
+            draft_issue.write_text(
+                "## What to build\nOriginal content.", encoding="utf-8"
+            )
+
+            state: RefinementState = {
+                "draft_issue_content": "## What to build\nOriginal content.",
+                "draft_issue_path": str(draft_issue),
+                "strict_mode": True,
+                "allowed_domains": ["github.com"],
+                "messages": [],
+                "keywords": [],
+                "search_queries": [],
+                "search_results": [],
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "model_name": "moonshotai/kimi-k2.7-code",
+                "status": "success",
+                "proposed_options": [],
+                "best_option": {"choice_id": "opt1", "score": 9.0},
+                "all_grades": [],
+            }
+
+            apply_decision_node(state)
+
+            # strict=True must be passed to enforce schema adherence via function calling
+            _, kwargs = mock_instance.with_structured_output.call_args
+            self.assertTrue(kwargs.get("strict") is True)
+
+    @patch("planner.nodes.apply_decision.get_llm")
+    @patch("planner.nodes.apply_decision.resolve_model_config")
+    def test_apply_decision_truncation_bumps_max_tokens(
+        self, mock_resolve, mock_get_llm
+    ):
+        """On a truncation parse failure (finish_reason=length) the retry must
+        rebuild the model with a larger max_tokens and distinguish truncation
+        from malformed JSON (#56)."""
+        mock_resolve.return_value = {"max_tokens": 16384}
+        mock_instance = MagicMock()
+        mock_get_llm.return_value = mock_instance
+        mock_structured_model = MagicMock()
+        mock_instance.with_structured_output.return_value = mock_structured_model
+
+        mock_output = ApplyDecisionOutput(
+            requires_agdr=False,
+            agdr_title="",
+            y_statement="",
+            context_and_problem="",
+            drivers=[],
+            options_considered=[],
+            decision_rationale="",
+            consequences=AgDRConsequences(),
+            references=[],
+            updated_issue_content="## What to build\nOriginal content.",
+        )
+
+        # Attempt 1: truncated (finish_reason=length, no parsed value).
+        # Attempt 2: success.
+        truncated_raw = MagicMock()
+        truncated_raw.response_metadata = {"finish_reason": "length"}
+        success_raw = MagicMock()
+        success_raw.response_metadata = {
+            "finish_reason": "stop",
+            "token_usage": {"prompt_tokens": 10, "completion_tokens": 20},
+        }
+        mock_structured_model.invoke.side_effect = [
+            {
+                "parsed": None,
+                "raw": truncated_raw,
+                "parsing_error": "EOF while parsing",
+            },
+            {"parsed": mock_output, "raw": success_raw},
+        ]
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            os.environ["GITHUB_WORKSPACE"] = str(workspace)
+            draft_issue = workspace / "0005-issue.md"
+            draft_issue.write_text(
+                "## What to build\nOriginal content.", encoding="utf-8"
+            )
+
+            state: RefinementState = {
+                "draft_issue_content": "## What to build\nOriginal content.",
+                "draft_issue_path": str(draft_issue),
+                "strict_mode": True,
+                "allowed_domains": ["github.com"],
+                "messages": [],
+                "keywords": [],
+                "search_queries": [],
+                "search_results": [],
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "model_name": "moonshotai/kimi-k2.7-code",
+                "status": "success",
+                "proposed_options": [],
+                "best_option": {"choice_id": "opt1", "score": 9.0},
+                "all_grades": [],
+            }
+
+            output = apply_decision_node(state)
+
+            # The truncated attempt was retried, then succeeded.
+            self.assertEqual(output["status"], "success")
+            self.assertEqual(mock_structured_model.invoke.call_count, 2)
+            # On truncation the model was rebuilt with a doubled max_tokens override.
+            bumped_calls = [
+                c
+                for c in mock_get_llm.call_args_list
+                if c.kwargs.get("max_tokens_override") == 32768
+            ]
+            self.assertEqual(len(bumped_calls), 1)
