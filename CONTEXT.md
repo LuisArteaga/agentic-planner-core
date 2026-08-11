@@ -73,7 +73,7 @@ Dieses Dokument definiert die fachliche Terminologie für diesen Kontext. Es dar
 
 ### Repository-API-Abruf (Repository API Retrieval)
 * **Definition**: Die Abfrage von Code-Dateien, Fehlerberichten (Issues) oder Produktveröffentlichungen (Releases) eines Softwareprojekts direkt über die Programmierschnittstelle der Hosting-Plattform.
-* **Geschäftsregeln**: Dient der präzisen und verzögerungsfreien Überprüfung des aktuellen Entwicklungsstands und von Code-Inhalten im Ziel-Repository oder in freigegebenen Fremdprojekten. Im Sicherheitsmodus wird der Zugriff streng auf das Ziel-Repository sowie auf die aus den freigegebenen Webadressen abgelitteneten Repositories beschränkt.
+* **Geschäftsregeln**: Dient der präzisen und verzögerungsfreien Überprüfung des aktuellen Entwicklungsstands und von Code-Inhalten im Ziel-Repository oder in freigegebenen Fremdprojekten. Im Sicherheitsmodus wird der Zugriff streng auf das Ziel-Repository sowie auf die aus den freigegebenen Webadressen abgeleiteten Repositories beschränkt.
 
 ### Judge-Evaluierungssuite (Judge Evaluation Suite)
 * **Definition**: Die Regressionstest-Suite, die jeden binären PR-Judge (`syntax_lint`, `test_coverage`, `architecture`, `security`) gegen einen menschlich annotierten Gold-Standard ausführt und statistische Übereinstimmungskennzahlen berechnet, um Modellwechsel in der zentralen Konfiguration quantifizierbar zu machen.
@@ -92,7 +92,7 @@ Dieses Dokument definiert die fachliche Terminologie für diesen Kontext. Es dar
 
 ### Verbosity Bias
 * **Definition**: Die Korrelation zwischen der Diff-Länge (Token) und der Score-Differenz zwischen Judge und Gold-Standard. Er zeigt an, ob ein Judge-Modell längere Diffs systematisch anders bewertet.
-* **Geschäftsregeln**: Bei einem Pearson-Korrelationskoeffizienten r > 0.3 wird der Bias als flagriert markiert.
+* **Geschäftsregeln**: Bei einem Pearson-Korrelationskoeffizienten r > 0.3 wird der Bias als kritisch markiert.
 * **Synonyme / Abzugrenzende Begriffe**: Nicht zu verwechseln mit der allgemeinen Modellqualität; ein Verbosity Bias ist ein Kalibrierungs-Artefakt, kein inhaltliches Urteil.
 
 ### Time-to-First-Token (TTFT)
