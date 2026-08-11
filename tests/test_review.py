@@ -101,7 +101,7 @@ def test_review_all_pass(mock_stdin, mock_urlopen, mock_post, mock_get, mock_env
     assert "### 🤖 Automated LLM PR Judges Summary" in payload["body"]
     assert "✅ PASS" in payload["body"]
 
-    # Hidden ADR-0019 verdict block (parsed by the pr-feedback-loop skill).
+    # Hidden ADR-0015 verdict block (parsed by the pr-feedback-loop skill).
     body = payload["body"]
     assert "<!-- llm-pr-review-verdicts" in body
     assert "syntax_lint: PASS" in body
@@ -163,7 +163,7 @@ def test_review_syntax_lint_fail_fast(
     assert "⏭️ SKIPPED" in body
     assert "Q3" in body and "❌ FAIL" in body
 
-    # Hidden ADR-0019 verdict block reflects the fail-fast state.
+    # Hidden ADR-0015 verdict block reflects the fail-fast state.
     assert "<!-- llm-pr-review-verdicts" in body
     assert "syntax_lint: FAIL" in body
     assert "test_coverage: SKIPPED" in body

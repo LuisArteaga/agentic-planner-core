@@ -1,6 +1,6 @@
 ---
 name: pr-feedback-loop
-description: Poll a pull request for LLM PR Review Judge verdicts and CI status, act on actionable feedback, and iterate until all judges PASS and CI is green. Use when finalizing a PR created by the autonomous loop (after `gh pr create`), when asked to run a "feedback loop", "wait for PR review", "resolve judge feedback", "fix CI", or iterate on LLM-judge findings. Encodes the ADR-0019 hidden verdict block format and ADR-0014 merge-blocking semantics specific to this repository.
+description: Poll a pull request for LLM PR Review Judge verdicts and CI status, act on actionable feedback, and iterate until all judges PASS and CI is green. Use when finalizing a PR created by the autonomous loop (after `gh pr create`), when asked to run a "feedback loop", "wait for PR review", "resolve judge feedback", "fix CI", or iterate on LLM-judge findings. Encodes the ADR-0015 hidden verdict block format and ADR-0014 merge-blocking semantics specific to this repository.
 ---
 
 # PR Feedback Loop
@@ -26,7 +26,7 @@ Each judge returns one of: `PASS`, `FAIL`, or `NEEDS REVIEW`.
 
 Both `FAIL` and `NEEDS REVIEW` block the merge. `NEEDS REVIEW` is not a soft warning — it means the judge lacked context to verify and the merge is blocked until resolved. Treat any non-PASS verdict as actionable.
 
-## Verdict Block Format (ADR-0019)
+## Verdict Block Format (ADR-0015)
 
 The review body ends with a hidden HTML comment:
 

@@ -85,7 +85,7 @@ def log(message):
 
 
 # Judge dimensions, in summary-table order. Single source of truth for the
-# review body loops and the hidden ADR-0019 verdict block (parsed by the
+# review body loops and the hidden ADR-0015 verdict block (parsed by the
 # pr-feedback-loop skill's parse_pr_verdicts.py).
 JUDGE_KEYS = ["syntax_lint", "test_coverage", "architecture", "security"]
 
@@ -776,7 +776,7 @@ def main():
 
         combined_report = "\n".join(report_lines)
 
-        # Hidden machine-parseable verdict block (ADR-0019). Invisible in the
+        # Hidden machine-parseable verdict block (ADR-0015). Invisible in the
         # GitHub-rendered review; parsed by .agents/skills/pr-feedback-loop.
         hidden_lines = ["<!-- llm-pr-review-verdicts"]
         for key in JUDGE_KEYS:

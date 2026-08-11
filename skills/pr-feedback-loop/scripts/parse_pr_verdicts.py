@@ -2,7 +2,7 @@
 """Parse LLM PR Review Judge verdicts from a GitHub PR.
 
 The PR Review Judges (scripts/review.py) post a single GitHub review whose body
-ends with a hidden HTML-comment verdict block (ADR-0019):
+ends with a hidden HTML-comment verdict block (ADR-0015):
 
     <!-- llm-pr-review-verdicts
     syntax_lint: PASS

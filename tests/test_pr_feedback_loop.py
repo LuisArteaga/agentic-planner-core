@@ -24,10 +24,8 @@ def _load_parser():
     return module
 
 
-@pytest.fixture
-def parser():
-    return _load_parser()
-
+# Module-level singleton: the parser is stateless, so load once at import.
+parser = _load_parser()
 
 VERDICT_BODY = """### 🤖 Automated LLM PR Judges Summary
 | Judge | Status | Details |
@@ -69,7 +67,7 @@ security: PASS
 """
 
 
-def test_parse_verdict_block_all_pass(parser):
+def test_parse_verdict_block_all_pass():
     verdicts = parser.parse_verdict_block(ALL_PASS_BODY)
     assert verdicts == {
         "syntax_lint": "PASS",
@@ -79,7 +77,7 @@ def test_parse_verdict_block_all_pass(parser):
     }
 
 
-def test_parse_verdict_block_with_fail(parser):
+def test_parse_verdict_block_with_fail():
     verdicts = parser.parse_verdict_block(VERDICT_BODY)
     assert verdicts["test_coverage"] == "FAIL"
     assert verdicts["syntax_lint"] == "PASS"
@@ -87,27 +85,27 @@ def test_parse_verdict_block_with_fail(parser):
     assert verdicts["security"] == "PASS"
 
 
-def test_parse_verdict_block_no_block(parser):
+def test_parse_verdict_block_no_block():
     assert parser.parse_verdict_block(NO_BLOCK_BODY) == {}
 
 
-def test_parse_verdict_block_needs_review(parser):
+def test_parse_verdict_block_needs_review():
     verdicts = parser.parse_verdict_block(NEEDS_REVIEW_BODY)
     assert verdicts["test_coverage"] == "NEEDS REVIEW"
 
 
-def test_extract_findings(parser):
+def test_extract_findings():
     findings = parser.extract_findings(VERDICT_BODY)
     assert len(findings) == 1
     assert findings[0] == "- `[ERROR]` [Q1] No tests added for new logic."
     assert "PASS" not in " ".join(findings)
 
 
-def test_extract_findings_empty(parser):
+def test_extract_findings_empty():
     assert parser.extract_findings(ALL_PASS_BODY) == []
 
 
-def test_main_no_reviews_exits_zero(parser, capsys):
+def test_main_no_reviews_exits_zero(capsys):
     with patch("subprocess.run") as mock_run:
         mock_run.return_value = MagicMock(stdout=json.dumps({"reviews": []}))
         sys.argv = ["parse_pr_verdicts.py", "42"]
@@ -118,7 +116,7 @@ def test_main_no_reviews_exits_zero(parser, capsys):
     assert out["has_review"] is False
 
 
-def test_main_all_pass_exits_zero(parser, capsys):
+def test_main_all_pass_exits_zero(capsys):
     reviews = [{"body": ALL_PASS_BODY, "state": "APPROVED"}]
     with patch("subprocess.run") as mock_run:
         mock_run.return_value = MagicMock(stdout=json.dumps({"reviews": reviews}))
@@ -132,7 +130,7 @@ def test_main_all_pass_exits_zero(parser, capsys):
     assert out["needs_review"] == []
 
 
-def test_main_fail_exits_one(parser, capsys):
+def test_main_fail_exits_one(capsys):
     reviews = [{"body": VERDICT_BODY, "state": "REQUEST_CHANGES"}]
     with patch("subprocess.run") as mock_run:
         mock_run.return_value = MagicMock(stdout=json.dumps({"reviews": reviews}))
@@ -146,7 +144,7 @@ def test_main_fail_exits_one(parser, capsys):
     assert len(out["findings"]) == 1
 
 
-def test_main_needs_review_exits_one(parser, capsys):
+def test_main_needs_review_exits_one(capsys):
     reviews = [{"body": NEEDS_REVIEW_BODY, "state": "COMMENTED"}]
     with patch("subprocess.run") as mock_run:
         mock_run.return_value = MagicMock(stdout=json.dumps({"reviews": reviews}))
@@ -158,7 +156,7 @@ def test_main_needs_review_exits_one(parser, capsys):
     assert "test_coverage" in out["needs_review"]
 
 
-def test_main_uses_latest_review_with_block(parser, capsys):
+def test_main_uses_latest_review_with_block(capsys):
     # Stale review (no block) then a fresh one with a block; parser must pick
     # the fresh one, not the first.
     reviews = [
@@ -175,16 +173,17 @@ def test_main_uses_latest_review_with_block(parser, capsys):
     assert out["all_pass"] is True
 
 
-def test_main_arg_error_exits_two(parser):
+def test_main_arg_error_exits_two():
     sys.argv = ["parse_pr_verdicts.py"]
     with pytest.raises(SystemExit) as exc:
         parser.main()
     assert exc.value.code == 2
 
 
-def test_main_gh_error_exits_two(parser):
+def test_main_gh_error_exits_two():
     with patch(
-        "subprocess.run", side_effect=parser.subprocess.CalledProcessError(1, "gh")
+        "subprocess.run",
+        side_effect=parser.subprocess.CalledProcessError(1, "gh"),
     ):
         sys.argv = ["parse_pr_verdicts.py", "42"]
         with pytest.raises(SystemExit) as exc:
