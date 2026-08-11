@@ -84,6 +84,12 @@ def log(message):
             pass
 
 
+# Judge dimensions, in summary-table order. Single source of truth for the
+# review body loops and the hidden ADR-0019 verdict block (parsed by the
+# pr-feedback-loop skill's parse_pr_verdicts.py).
+JUDGE_KEYS = ["syntax_lint", "test_coverage", "architecture", "security"]
+
+
 SYSTEM_PROMPT_SYNTAX_LINT = (
     "You are a code reviewer specialized in syntax validation, JSON schemas, and naming conventions.\n"
     "Review the PR diff against these specific criteria:\n"
@@ -694,7 +700,7 @@ def main():
         report_lines.append("| Judge | Status | Details |")
         report_lines.append("| :--- | :---: | :--- |")
 
-        for key in ["syntax_lint", "test_coverage", "architecture", "security"]:
+        for key in JUDGE_KEYS:
             info = judges_data[key]
             status = info["status"]
             if status == "PASS":
@@ -721,7 +727,7 @@ def main():
         report_lines.append("\n---\n")
 
         # Details section for executed judges
-        for key in ["syntax_lint", "test_coverage", "architecture", "security"]:
+        for key in JUDGE_KEYS:
             info = judges_data[key]
             if info["status"] == "SKIPPED":
                 continue
@@ -769,6 +775,14 @@ def main():
             report_lines.append("\n---\n")
 
         combined_report = "\n".join(report_lines)
+
+        # Hidden machine-parseable verdict block (ADR-0019). Invisible in the
+        # GitHub-rendered review; parsed by .agents/skills/pr-feedback-loop.
+        hidden_lines = ["<!-- llm-pr-review-verdicts"]
+        for key in JUDGE_KEYS:
+            hidden_lines.append(f"{key}: {judges_data[key]['status']}")
+        hidden_lines.append("-->")
+        combined_report += "\n" + "\n".join(hidden_lines)
 
         # Determine overall success / failure
         overall_failed = any(info["status"] == "FAIL" for info in judges_data.values())
