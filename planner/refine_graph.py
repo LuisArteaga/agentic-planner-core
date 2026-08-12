@@ -8,6 +8,16 @@ from planner.nodes.propose_options import propose_options_node
 from planner.nodes.evaluate_grade import evaluate_grade_node
 from planner.nodes.apply_decision import apply_decision_node
 from planner.nodes.publish_issue import publish_issue_node
+from planner.zero_tolerance.gate import (
+    detect_structural_change_node,
+    route_after_decision,
+    run_cascade_pass,
+    threshold_check_node,
+)
+from planner.zero_tolerance.intent_gate import intent_gate_node
+from planner.zero_tolerance.linters import structural_signature
+from planner.zero_tolerance.models import ZeroToleranceViolation
+from planner.zero_tolerance.planning_judge import planning_judge_node
 
 logger = logging.getLogger("planner.refine_graph")
 
@@ -18,6 +28,10 @@ subgraph_workflow.add_node("web_search", web_search_node)
 subgraph_workflow.add_node("propose_options", propose_options_node)
 subgraph_workflow.add_node("evaluate_grade", evaluate_grade_node)
 subgraph_workflow.add_node("apply_decision", apply_decision_node)
+subgraph_workflow.add_node("detect_structural_change", detect_structural_change_node)
+subgraph_workflow.add_node("threshold_check", threshold_check_node)
+subgraph_workflow.add_node("intent_gate", intent_gate_node)
+subgraph_workflow.add_node("planning_judge", planning_judge_node)
 subgraph_workflow.add_node("publish_issue", publish_issue_node)
 
 subgraph_workflow.set_entry_point("analyze_sources")
@@ -25,7 +39,20 @@ subgraph_workflow.add_edge("analyze_sources", "web_search")
 subgraph_workflow.add_edge("web_search", "propose_options")
 subgraph_workflow.add_edge("propose_options", "evaluate_grade")
 subgraph_workflow.add_edge("evaluate_grade", "apply_decision")
-subgraph_workflow.add_edge("apply_decision", "publish_issue")
+# After apply_decision, always detect structural change (cheap, deterministic),
+# then route based on zero-tolerance + triviality flags.
+subgraph_workflow.add_edge("apply_decision", "detect_structural_change")
+subgraph_workflow.add_conditional_edges(
+    "detect_structural_change",
+    route_after_decision,
+    {
+        "threshold_check": "threshold_check",
+        "publish_issue": "publish_issue",
+    },
+)
+subgraph_workflow.add_edge("threshold_check", "intent_gate")
+subgraph_workflow.add_edge("intent_gate", "planning_judge")
+subgraph_workflow.add_edge("planning_judge", "publish_issue")
 subgraph_workflow.add_edge("publish_issue", END)
 
 refine_subgraph = subgraph_workflow.compile()
@@ -47,6 +74,27 @@ def run_refinement_subgraph_node(state: AgentState) -> dict:
     with open(draft_path, "r", encoding="utf-8") as f:
         draft_content = f.read()
 
+    zero_tolerance = state.get("zero_tolerance", False)
+    zt_config = state.get("zero_tolerance_config", {}) or {}
+
+    # Cascade collision gate: skip drafts already marked stale by an earlier
+    # iteration's structural change (zero-tolerance mode only). The draft stays
+    # on disk for a human-driven rerun.
+    if zero_tolerance:
+        stale_drafts = state.get("stale_drafts", []) or []
+        if (
+            draft_path.name in stale_drafts
+            or (draft_path.with_suffix(".md.stale")).exists()
+        ):
+            logger.info(
+                f"Skipping stale draft {draft_path.name} (upstream structural "
+                f"change). Left on disk for rerun."
+            )
+            return {
+                "current_issue_index": idx + 1,
+                "failed_drafts": [str(draft_path)],
+            }
+
     subgraph_input: RefinementState = {
         "draft_issue_content": draft_content,
         "draft_issue_path": str(draft_path),
@@ -65,6 +113,12 @@ def run_refinement_subgraph_node(state: AgentState) -> dict:
         "proposed_options": [],
         "best_option": {},
         "all_grades": [],
+        "zero_tolerance": zero_tolerance,
+        "zero_tolerance_config": zt_config,
+        "original_draft_signature": structural_signature(draft_content),
+        "trivial": False,
+        "structurally_changed": False,
+        "intent_line": "",
     }
 
     # Execute the subgraph. Per ADR-0005, a single draft failure is isolated:
@@ -72,14 +126,34 @@ def run_refinement_subgraph_node(state: AgentState) -> dict:
     # and the batch continues. The terminal batch status is derived from these
     # accumulated lists in the CLI entrypoint rather than from an overwriteable
     # ``status`` field, which previously hid mid-loop failures (#56).
+    #
+    # Zero-tolerance violations are the exception (ADR-0019): they HALT the
+    # entire batch immediately (HITL) instead of being isolated per-draft.
     draft_path_str = str(draft_path)
     try:
-        refine_subgraph.invoke(subgraph_input)
-        return {
+        subgraph_result = refine_subgraph.invoke(subgraph_input)
+        result: dict = {
             "current_issue_index": idx + 1,
             "succeeded_drafts": [draft_path_str],
             "failed_drafts": [],
         }
+
+        # Cascade collision gate (zero-tolerance only): if the issue was
+        # structurally changed during refinement, mark its downstream dependents
+        # stale so they are skipped in subsequent iterations of this run.
+        if zero_tolerance and subgraph_result.get("structurally_changed"):
+            dep_map = state.get("dependency_map", {}) or {}
+            remaining = [
+                p for i, p in enumerate(draft_issues) if i > idx and Path(p).exists()
+            ]
+            stale = run_cascade_pass(remaining, [draft_path.name], dep_map)
+            if stale:
+                result["stale_drafts"] = [Path(s).name for s in stale]
+            result["changed_drafts"] = [draft_path.name]
+        return result
+    except ZeroToleranceViolation:
+        # Halt the entire batch — zero-tolerance violations demand HITL.
+        raise
     except Exception as e:
         logger.error(f"Error processing draft issue {draft_path}: {e}", exc_info=True)
         return {
