@@ -385,8 +385,8 @@ def apply_decision_node(state: RefinementState) -> Dict[str, Any]:
             header = (
                 f"# {num_str} - {title_display}\n\n"
                 f"* **Status**: {status}\n"
-                f"* **Datum**: {today}\n"
-                f"* **Entscheidungsträger**: {critic_model_name}\n"
+                f"* **Date**: {today}\n"
+                f"* **Decision Maker**: {critic_model_name}\n"
                 f"* **Trace-ID**: {trace_id}\n"
                 f"* **Trigger-Issue**: {trigger_issue}\n"
                 f"* **Y-Statement**: {response_data.y_statement.strip()}\n\n"
@@ -419,14 +419,14 @@ def apply_decision_node(state: RefinementState) -> Dict[str, Any]:
                 options_matrix += f"| {opt.name} | {opt.score}/10.0 | {opt.checks_passed}/10 | {opt.description} |\n"
 
             agdr_body = (
-                f"## Kontext und Problemstellung\n{response_data.context_and_problem.strip()}\n\n"
-                f"## Entscheidungsfaktoren (Drivers)\n{drivers_list if drivers_list else '* None'}\n\n"
-                f"## Betrachtete Optionen\n{options_matrix}\n"
-                f"## Entscheidung\n{response_data.decision_rationale.strip()}\n\n"
-                f"### Konsequenzen\n"
-                f"* **Positiv**:\n{pros_list if pros_list else '* None'}\n"
-                f"* **Negativ**:\n{cons_list if cons_list else '* None'}\n\n"
-                f"## Inspiration & Referenzen\n{refs_list if refs_list else '* None'}\n"
+                f"## Context and Problem Statement\n{response_data.context_and_problem.strip()}\n\n"
+                f"## Decision Drivers\n{drivers_list if drivers_list else '* None'}\n\n"
+                f"## Options Considered\n{options_matrix}\n"
+                f"## Decision\n{response_data.decision_rationale.strip()}\n\n"
+                f"### Consequences\n"
+                f"* **Positive**:\n{pros_list if pros_list else '* None'}\n"
+                f"* **Negative**:\n{cons_list if cons_list else '* None'}\n\n"
+                f"## Inspiration & References\n{refs_list if refs_list else '* None'}\n"
             )
 
             full_agdr_content = header + agdr_body
