@@ -201,17 +201,23 @@ def publish_issue_node(state: RefinementState) -> Dict[str, Any]:
         logger.debug(f"Applying artificial jitter of {jitter:.2f} seconds...")
         time.sleep(jitter)
 
-        # 4. Validate and remove local draft file to prevent Path Traversal.
+        # 4. Remove local draft file to prevent Path Traversal.
+        # Only validate and attempt deletion when the file actually exists —
+        # a non-existent draft (already removed, or a placeholder path) needs
+        # no path-traversal check since there is nothing to delete. When the
+        # file does exist, validate_draft_path raises ValueError if the path
+        # escapes both GITHUB_WORKSPACE and the central drafts directory.
         if filepath:
-            from planner.utils import validate_draft_path
-
-            draft_path = validate_draft_path(filepath, workspace_dir)
-
-            if draft_path.exists():
-                try:
-                    os.remove(draft_path)
-                    logger.info(f"Successfully deleted local draft file: {draft_path}")
-                except Exception as e:
-                    logger.warning(f"Could not delete draft file {draft_path}: {e}")
+            raw_path = Path(filepath)
+            if raw_path.exists():
+                draft_path = validate_draft_path(filepath, workspace_dir)
+                if draft_path.exists():
+                    try:
+                        os.remove(draft_path)
+                        logger.info(
+                            f"Successfully deleted local draft file: {draft_path}"
+                        )
+                    except Exception as e:
+                        logger.warning(f"Could not delete draft file {draft_path}: {e}")
 
         return {"status": "success"}
