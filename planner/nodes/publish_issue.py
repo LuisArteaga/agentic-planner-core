@@ -201,23 +201,22 @@ def publish_issue_node(state: RefinementState) -> Dict[str, Any]:
         logger.debug(f"Applying artificial jitter of {jitter:.2f} seconds...")
         time.sleep(jitter)
 
-        # 4. Remove local draft file to prevent Path Traversal.
-        # Only validate and attempt deletion when the file actually exists —
-        # a non-existent draft (already removed, or a placeholder path) needs
-        # no path-traversal check since there is nothing to delete. When the
-        # file does exist, validate_draft_path raises ValueError if the path
-        # escapes both GITHUB_WORKSPACE and the central drafts directory.
+        # 4. Remove local draft file (path-traversal safe).
+        # validate_draft_path runs FIRST — before any filesystem interaction
+        # with the path — to maintain the path-traversal defense-in-depth
+        # (ADR-0020 security model). If the path escapes both GITHUB_WORKSPACE
+        # and the central drafts directory, ValueError is caught and the
+        # deletion is skipped with a security warning. The issue is already
+        # published at this point, so crashing would leave a partial state.
         if filepath:
-            raw_path = Path(filepath)
-            if raw_path.exists():
+            try:
                 draft_path = validate_draft_path(filepath, workspace_dir)
                 if draft_path.exists():
-                    try:
-                        os.remove(draft_path)
-                        logger.info(
-                            f"Successfully deleted local draft file: {draft_path}"
-                        )
-                    except Exception as e:
-                        logger.warning(f"Could not delete draft file {draft_path}: {e}")
+                    os.remove(draft_path)
+                    logger.info(f"Successfully deleted local draft file: {draft_path}")
+            except ValueError as exc:
+                logger.warning(f"Skipping draft file deletion (path traversal): {exc}")
+            except Exception as e:
+                logger.warning(f"Could not delete draft file: {e}")
 
         return {"status": "success"}

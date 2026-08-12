@@ -338,7 +338,14 @@ class PublishNodeTests(unittest.TestCase):
             publish_issue_node(state)
 
     @patch("requests.Session")
-    def test_publish_issue_node_path_traversal_raises(self, mock_session_class):
+    def test_publish_issue_node_path_traversal_skips_deletion(self, mock_session_class):
+        """Path traversal in draft_issue_path must not crash publish.
+
+        The issue is already published to GitHub before the draft-file
+        deletion step. Crashing on a path-traversal detection would leave
+        a partial state (issue created, draft not cleaned up). Instead,
+        the node logs a security warning and skips deletion gracefully.
+        """
         mock_session = MagicMock()
         mock_session_class.return_value = mock_session
 
@@ -372,11 +379,16 @@ class PublishNodeTests(unittest.TestCase):
                 "all_grades": [],
             }
 
-            with self.assertRaises(ValueError) as context:
-                with patch("planner.nodes.publish_issue.time.sleep"):
-                    publish_issue_node(state)
+            with (
+                patch("planner.nodes.publish_issue.time.sleep"),
+                patch("planner.nodes.publish_issue.os.remove") as mock_remove,
+            ):
+                result = publish_issue_node(state)
 
-            self.assertIn("Path traversal detected", str(context.exception))
+            # Issue is still published successfully
+            self.assertEqual(result["status"], "success")
+            # Deletion must NOT have been attempted on the traversal path
+            mock_remove.assert_not_called()
 
     @patch("requests.Session")
     def test_publish_issue_node_with_central_drafts_path_succeeds(
