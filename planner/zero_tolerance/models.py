@@ -72,8 +72,6 @@ class ZeroToleranceConfig(BaseModel):
     # Triviality gate: bypass the LLM gates for trivial draft issues.
     trivial_max_lines: int = 15
     trivial_scopes: List[str] = Field(default_factory=lambda: ["docs"])
-    # Cascade collision gate.
-    fail_on_stale: bool = False
     # Source locations (relative to CWD by default, matching existing ADR loading).
     context_path: str = "CONTEXT.md"
     adr_dirs: List[str] = Field(default_factory=lambda: ["docs/adr", "docs/agdr"])

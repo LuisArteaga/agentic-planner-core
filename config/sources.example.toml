@@ -24,6 +24,5 @@ min_acceptable_score = 5.0
 max_fruitless_searches = 0
 trivial_max_lines = 15
 trivial_scopes = ["docs"]
-fail_on_stale = false
 context_path = "CONTEXT.md"
 adr_dirs = ["docs/adr", "docs/agdr"]

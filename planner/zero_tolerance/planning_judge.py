@@ -6,14 +6,16 @@ search evidence). A failed verdict halts the entire batch (HITL).
 """
 
 import logging
+from pathlib import Path
 from typing import Any, Dict, List
 
-from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 
-from planner.config import get_llm
 from planner.state import RefinementState
-from planner.utils import extract_finish_reason
+from planner.zero_tolerance.llm_utils import (
+    build_search_context,
+    invoke_structured_with_retry,
+)
 from planner.zero_tolerance.models import ZeroToleranceViolation
 from scripts.telemetry import orchestrator_phase
 
@@ -36,23 +38,10 @@ class PlanningJudgeOutput(BaseModel):
     )
 
 
-def _build_search_context(search_results: List[Dict[str, Any]]) -> str:
-    if not search_results:
-        return "No web search results available."
-    lines = []
-    for r in search_results[:10]:
-        lines.append(
-            f"- {r.get('title', '')} ({r.get('url', '')}): {r.get('snippet', '')}"
-        )
-    return "\n".join(lines)
-
-
 def planning_judge_node(state: RefinementState) -> Dict[str, Any]:
     """Final audit of the refined issue against the specification."""
     logger.info("Running planning_judge node...")
     with orchestrator_phase("zero_tolerance_planning_judge"):
-        from pathlib import Path
-
         from planner.nodes.evaluate_grade import load_adrs
 
         draft_path = state.get("draft_issue_path", "")
@@ -91,54 +80,21 @@ def planning_judge_node(state: RefinementState) -> Dict[str, Any]:
         user_message = (
             f"Refined issue (hypothesis to audit):\n{refined_content}\n\n"
             f"Intent gate line:\n{intent_line or '(none)'}\n\n"
-            f"Search evidence:\n{_build_search_context(search_results)}\n\n"
+            f"Search evidence:\n{build_search_context(search_results)}\n\n"
             f"PRD excerpt:\n{prd or 'No PRD found.'}\n\n"
             f"Existing decisions:\n{decisions or 'None.'}\n\n"
             f"Emit the structured audit verdict."
         )
 
-        model = get_llm("planning_judge")
-        structured_model = model.with_structured_output(
-            PlanningJudgeOutput, include_raw=True, strict=True
-        )
-
-        result = None
-        last_error = None
-        for attempt in range(1, 4):
-            try:
-                logger.info(f"Planning judge attempt {attempt}/3...")
-                content = user_message
-                if attempt > 1 and last_error:
-                    content = (
-                        f"{user_message}\n\nWARNING: previous attempt failed: "
-                        f"{last_error}\nOutput valid JSON matching the schema."
-                    )
-                response = structured_model.invoke(
-                    [
-                        SystemMessage(content=system_instruction),
-                        HumanMessage(content=content),
-                    ]
-                )
-                if response and isinstance(response, dict):
-                    parsed = response.get("parsed")
-                    if isinstance(parsed, PlanningJudgeOutput):
-                        result = parsed
-                        break
-                    raw = response.get("raw")
-                    last_error = (
-                        str(response.get("parsing_error"))
-                        or f"not PlanningJudgeOutput (finish_reason={extract_finish_reason(raw)})"
-                    )
-            except Exception as exc:
-                last_error = str(exc)
-                logger.warning(f"Planning judge attempt {attempt} failed: {exc}")
-
-        if not result:
-            raise ZeroToleranceViolation(
+        try:
+            result = invoke_structured_with_retry(
                 "planning_judge",
-                f"Failed to produce structured output after 3 attempts: {last_error}",
-                issue_name,
+                PlanningJudgeOutput,
+                system_instruction,
+                user_message,
             )
+        except ValueError as exc:
+            raise ZeroToleranceViolation("planning_judge", str(exc), issue_name)
 
         if not result.passed:
             detail = "; ".join(result.issues) if result.issues else result.verdict

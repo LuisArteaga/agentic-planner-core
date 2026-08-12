@@ -354,7 +354,7 @@ class IntentGateTests(unittest.TestCase):
         os.environ.clear()
         os.environ.update(self.original_env)
 
-    @patch("planner.zero_tolerance.intent_gate.get_llm")
+    @patch("planner.zero_tolerance.llm_utils.get_llm")
     def test_agreement_passes(self, mock_get_llm):
         mock_model = MagicMock()
         mock_get_llm.return_value = mock_model
@@ -383,7 +383,7 @@ class IntentGateTests(unittest.TestCase):
             out = intent_gate_node(state)  # type: ignore[arg-type]
             self.assertIn("INTENT", out["intent_line"])
 
-    @patch("planner.zero_tolerance.intent_gate.get_llm")
+    @patch("planner.zero_tolerance.llm_utils.get_llm")
     def test_contradiction_halts(self, mock_get_llm):
         mock_model = MagicMock()
         mock_get_llm.return_value = mock_model
@@ -421,7 +421,7 @@ class PlanningJudgeTests(unittest.TestCase):
         os.environ.clear()
         os.environ.update(self.original_env)
 
-    @patch("planner.zero_tolerance.planning_judge.get_llm")
+    @patch("planner.zero_tolerance.llm_utils.get_llm")
     def test_passed(self, mock_get_llm):
         mock_model = MagicMock()
         mock_get_llm.return_value = mock_model
@@ -437,7 +437,7 @@ class PlanningJudgeTests(unittest.TestCase):
             out = planning_judge_node(state)  # type: ignore[arg-type]
             self.assertEqual(out, {})
 
-    @patch("planner.zero_tolerance.planning_judge.get_llm")
+    @patch("planner.zero_tolerance.llm_utils.get_llm")
     def test_failed_halts(self, mock_get_llm):
         mock_model = MagicMock()
         mock_get_llm.return_value = mock_model
@@ -455,6 +455,69 @@ class PlanningJudgeTests(unittest.TestCase):
             with self.assertRaises(ZeroToleranceViolation) as ctx:
                 planning_judge_node(state)  # type: ignore[arg-type]
             self.assertEqual(ctx.exception.check, "planning_judge")
+
+
+# ---------------------------------------------------------------------------
+# Shared LLM helpers
+# ---------------------------------------------------------------------------
+
+
+class LLMUtilsTests(unittest.TestCase):
+    def setUp(self):
+        self.original_env = dict(os.environ)
+        os.environ["OPENROUTER_API_KEY"] = "mock-key"
+
+    def tearDown(self):
+        os.environ.clear()
+        os.environ.update(self.original_env)
+
+    def test_build_search_context_empty(self):
+        from planner.zero_tolerance.llm_utils import build_search_context
+
+        self.assertEqual(build_search_context([]), "No web search results available.")
+
+    def test_build_search_context_with_results(self):
+        from planner.zero_tolerance.llm_utils import build_search_context
+
+        ctx = build_search_context([{"title": "T", "url": "U", "snippet": "S"}])
+        self.assertIn("T", ctx)
+        self.assertIn("U", ctx)
+        self.assertIn("S", ctx)
+
+    @patch("planner.zero_tolerance.llm_utils.get_llm")
+    def test_invoke_structured_with_retry_returns_parsed(self, mock_get_llm):
+        from planner.zero_tolerance.llm_utils import invoke_structured_with_retry
+
+        mock_model = MagicMock()
+        mock_get_llm.return_value = mock_model
+        mock_struct = MagicMock()
+        mock_model.with_structured_output.return_value = mock_struct
+        expected = PlanningJudgeOutput(passed=True, verdict="ok", issues=[])
+        mock_struct.invoke.return_value = _mock_structured_response(expected)
+        result = invoke_structured_with_retry(
+            "planning_judge", PlanningJudgeOutput, "sys", "user"
+        )
+        self.assertIs(result, expected)
+
+    @patch("planner.zero_tolerance.llm_utils.get_llm")
+    def test_invoke_structured_with_retry_raises_after_attempts(self, mock_get_llm):
+        from planner.zero_tolerance.llm_utils import invoke_structured_with_retry
+
+        mock_model = MagicMock()
+        mock_get_llm.return_value = mock_model
+        mock_struct = MagicMock()
+        mock_model.with_structured_output.return_value = mock_struct
+        # Always returns a non-matching parsed value -> never succeeds.
+        mock_struct.invoke.return_value = {
+            "parsed": "not-a-model",
+            "raw": None,
+            "parsing_error": "bad",
+        }
+        with self.assertRaises(ValueError):
+            invoke_structured_with_retry(
+                "planning_judge", PlanningJudgeOutput, "sys", "user", max_attempts=2
+            )
+        self.assertEqual(mock_struct.invoke.call_count, 2)
 
 
 # ---------------------------------------------------------------------------
