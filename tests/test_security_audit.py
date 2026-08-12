@@ -12,7 +12,8 @@ from planner.nodes.security_audit import (
     security_audit_node,
     write_security_report,
 )
-from planner.nodes.web_search import _is_blacklisted, web_search_node
+from planner.nodes.web_search import web_search_node
+from planner.utils import is_blacklisted
 from planner.state import RefinementState
 from planner.utils import active_search_results
 
@@ -82,14 +83,14 @@ class ActiveSearchResultsTests(unittest.TestCase):
 class BlacklistMatchTests(unittest.TestCase):
     def test_url_match(self):
         self.assertTrue(
-            _is_blacklisted(_result("https://evil.com/x"), ["https://evil.com/x"])
+            is_blacklisted(_result("https://evil.com/x"), ["https://evil.com/x"])
         )
 
     def test_domain_match(self):
-        self.assertTrue(_is_blacklisted(_result("https://evil.com/x"), ["evil.com"]))
+        self.assertTrue(is_blacklisted(_result("https://evil.com/x"), ["evil.com"]))
 
     def test_no_match(self):
-        self.assertFalse(_is_blacklisted(_result("https://good.com/x"), ["evil.com"]))
+        self.assertFalse(is_blacklisted(_result("https://good.com/x"), ["evil.com"]))
 
 
 class SecurityAuditNodeTests(unittest.TestCase):

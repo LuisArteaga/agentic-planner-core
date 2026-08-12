@@ -5,29 +5,7 @@ from planner.state import RefinementState
 from scripts.telemetry import orchestrator_phase
 from planner.config import AppConfig, get_llm
 from planner.tools.research import fetch_allowed_url
-from planner.utils import active_search_results
-
-
-def _source_keys(result: Dict[str, Any]) -> List[str]:
-    from urllib.parse import urlparse
-
-    url = (result.get("url") or "").strip().lower()
-    host = (urlparse(url).netloc or "").lower()
-    if host.startswith("www."):
-        host = host[4:]
-    keys = []
-    if url:
-        keys.append(url)
-    if host:
-        keys.append(host)
-    return keys
-
-
-def _is_blacklisted(result: Dict[str, Any], blacklist: List[str]) -> bool:
-    if not blacklist:
-        return False
-    bl = {b.strip().lower() for b in blacklist if b}
-    return any(key in bl for key in _source_keys(result))
+from planner.utils import active_search_results, is_blacklisted
 
 
 logger = logging.getLogger("planner.nodes.web_search")
@@ -148,7 +126,7 @@ def web_search_node(state: RefinementState) -> Dict[str, Any]:
         if int(state.get("security_retries", 0) or 0) > 0:
             blacklist = state.get("blacklisted_sources", []) or []
             base = active_search_results(state)
-            cleaned = [r for r in base if not _is_blacklisted(r, blacklist)]
+            cleaned = [r for r in base if not is_blacklisted(r, blacklist)]
             logger.info(
                 f"Security retry: filtered {len(base)} -> {len(cleaned)} results "
                 f"(blacklist={len(blacklist)}). No re-fetch."

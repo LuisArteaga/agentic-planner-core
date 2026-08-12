@@ -29,12 +29,11 @@ import logging
 import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from urllib.parse import urlparse
 
 from pydantic import BaseModel, Field
 
 from planner.state import RefinementState
-from planner.utils import active_search_results
+from planner.utils import active_search_results, is_blacklisted, source_keys
 from scripts.telemetry import orchestrator_phase
 
 logger = logging.getLogger("planner.nodes.security_audit")
@@ -96,38 +95,6 @@ def regex_scan(text: str) -> List[str]:
         for m in pattern.finditer(text):
             hits.append(m.group(0))
     return hits
-
-
-def _domain_of(url: str) -> str:
-    try:
-        host = (urlparse(url).netloc or "").lower()
-    except Exception:
-        return ""
-    if host.startswith("www."):
-        host = host[4:]
-    return host
-
-
-def _source_keys(result: Dict[str, Any]) -> List[str]:
-    """Lowercased URL + domain keys for a search result, for blacklist matching."""
-    url = (result.get("url") or "").strip()
-    domain = _domain_of(url)
-    keys = []
-    if url:
-        keys.append(url.lower())
-    if domain:
-        keys.append(domain)
-    return keys
-
-
-def _is_blacklisted(result: Dict[str, Any], blacklist: List[str]) -> bool:
-    if not blacklist:
-        return False
-    bl = {b.strip().lower() for b in blacklist if b}
-    for key in _source_keys(result):
-        if key in bl:
-            return True
-    return False
 
 
 def _build_audit_context(
@@ -267,7 +234,7 @@ def security_audit_node(state: RefinementState) -> Dict[str, Any]:
                 hits = regex_scan(text)
                 if hits:
                     regex_hits.extend(hits)
-                    for key in _source_keys(r):
+                    for key in source_keys(r):
                         if key and key not in regex_offending:
                             regex_offending.append(key)
 
@@ -300,7 +267,7 @@ def security_audit_node(state: RefinementState) -> Dict[str, Any]:
             if s not in new_blacklist:
                 new_blacklist.append(s)
 
-        cleaned = [r for r in results if not _is_blacklisted(r, new_blacklist)]
+        cleaned = [r for r in results if not is_blacklisted(r, new_blacklist)]
 
         audit_result_dict = {
             "is_injection": injection,
