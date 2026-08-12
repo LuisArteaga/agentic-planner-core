@@ -42,6 +42,25 @@ def main():
             "Gate and Planning Judge. Any violation halts the batch (HITL)."
         ),
     )
+    refine_parser.add_argument(
+        "--interactive",
+        action="store_true",
+        default=False,
+        help=(
+            "Force the Zero-Trust HITL publish gate: prompt for confirmation "
+            "before each GitHub issue is created (ADR-0020). Overrides "
+            "[security].require_approval = false."
+        ),
+    )
+    refine_parser.add_argument(
+        "--yes",
+        action="store_true",
+        default=False,
+        help=(
+            "Auto-approve the HITL publish gate for every issue, even when "
+            "[security].require_approval = true. Use in CI/autonomous runs."
+        ),
+    )
 
     # grill command
     grill_parser = subparsers.add_parser(
@@ -183,6 +202,17 @@ def main():
 
                     dependency_map = compute_dependency_map(draft_files)
 
+                # Zero-Trust Prompt-Injection Defense (ADR-0020): the security
+                # config drives the audit node; the HITL publish gate is
+                # controlled by [security].require_approval plus the
+                # --interactive (force on) / --yes (auto-approve) CLI flags.
+                security_cfg = config.sources.security
+                require_approval = bool(security_cfg.require_approval)
+                if args.interactive:
+                    require_approval = True
+                if args.yes:
+                    require_approval = False
+
                 initial_state: AgentState = {
                     "draft_issues": draft_files,
                     "current_issue_index": 0,
@@ -197,6 +227,11 @@ def main():
                     "dependency_map": dependency_map,
                     "changed_drafts": [],
                     "stale_drafts": [],
+                    "security_config": security_cfg.model_dump(),
+                    "require_approval": require_approval,
+                    "security_findings": [],
+                    "blacklisted_sources": [],
+                    "offline_refinement": False,
                 }
 
                 # Abort at startup if strict mode is enabled but whitelist is empty
@@ -304,6 +339,36 @@ def main():
                         )
                         for name in stale_drafts:
                             print(f"  - {name}")
+
+                    # Zero-Trust security report (ADR-0020): write a per-run
+                    # Markdown report and summarize on the console.
+                    sec_findings = result.get("security_findings", []) or []
+                    sec_blacklist = result.get("blacklisted_sources", []) or []
+                    offline_used = bool(result.get("offline_refinement", False))
+                    if sec_findings:
+                        from planner.nodes.security_audit import (
+                            write_security_report,
+                        )
+
+                        report_repo = repo_name or "unknown"
+                        report_path = write_security_report(
+                            report_repo,
+                            sec_findings,
+                            sec_blacklist,
+                            offline_used,
+                        )
+                        flagged = sum(1 for f in sec_findings if f.get("is_injection"))
+                        offline_note = (
+                            " [OFFLINE REFINEMENT used]" if offline_used else ""
+                        )
+                        print(
+                            f"Security audit: {len(sec_findings)} draft(s) audited, "
+                            f"{flagged} injection attempt(s) flagged, "
+                            f"{len(sec_blacklist)} source(s) blacklisted"
+                            f"{offline_note}."
+                        )
+                        if report_path:
+                            print(f"Security report written to: {report_path}")
                 else:
                     print("No draft issues found. Nothing to refine.")
         except Exception as e:

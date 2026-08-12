@@ -12,6 +12,7 @@ from typing import Any, Dict, List
 from pydantic import BaseModel, Field
 
 from planner.state import RefinementState
+from planner.utils import active_search_results
 from planner.zero_tolerance.llm_utils import (
     build_search_context,
     invoke_structured_with_retry,
@@ -53,7 +54,7 @@ def planning_judge_node(state: RefinementState) -> Dict[str, Any]:
         if not refined_content:
             refined_content = state.get("draft_issue_content", "")
 
-        search_results = state.get("search_results", []) or []
+        search_results = active_search_results(state)
         intent_line = state.get("intent_line", "")
 
         prd = ""

@@ -6,6 +6,7 @@ from planner.nodes.analyze_sources import analyze_sources_node
 from planner.nodes.web_search import web_search_node
 from planner.nodes.propose_options import propose_options_node
 from planner.nodes.evaluate_grade import evaluate_grade_node
+from planner.nodes.security_audit import route_after_audit, security_audit_node
 from planner.nodes.apply_decision import apply_decision_node
 from planner.nodes.publish_issue import publish_issue_node
 from planner.zero_tolerance.gate import (
@@ -27,6 +28,7 @@ subgraph_workflow.add_node("analyze_sources", analyze_sources_node)
 subgraph_workflow.add_node("web_search", web_search_node)
 subgraph_workflow.add_node("propose_options", propose_options_node)
 subgraph_workflow.add_node("evaluate_grade", evaluate_grade_node)
+subgraph_workflow.add_node("security_audit", security_audit_node)
 subgraph_workflow.add_node("apply_decision", apply_decision_node)
 subgraph_workflow.add_node("detect_structural_change", detect_structural_change_node)
 subgraph_workflow.add_node("threshold_check", threshold_check_node)
@@ -38,7 +40,18 @@ subgraph_workflow.set_entry_point("analyze_sources")
 subgraph_workflow.add_edge("analyze_sources", "web_search")
 subgraph_workflow.add_edge("web_search", "propose_options")
 subgraph_workflow.add_edge("propose_options", "evaluate_grade")
-subgraph_workflow.add_edge("evaluate_grade", "apply_decision")
+# Zero-Trust prompt-injection defense (ADR-0020): audit after grading, before
+# the decision. On detection the graph re-enters web_search (filter-only) to
+# drop blacklisted sources; on clean/offline it proceeds to apply_decision.
+subgraph_workflow.add_edge("evaluate_grade", "security_audit")
+subgraph_workflow.add_conditional_edges(
+    "security_audit",
+    route_after_audit,
+    {
+        "retry": "web_search",
+        "apply": "apply_decision",
+    },
+)
 # After apply_decision, always detect structural change (cheap, deterministic),
 # then route based on zero-tolerance + triviality flags.
 subgraph_workflow.add_edge("apply_decision", "detect_structural_change")
@@ -76,6 +89,11 @@ def run_refinement_subgraph_node(state: AgentState) -> dict:
 
     zero_tolerance = state.get("zero_tolerance", False)
     zt_config = state.get("zero_tolerance_config", {}) or {}
+
+    # Zero-Trust prompt-injection defense (ADR-0020) config + HITL flag are
+    # passed straight through from the master state.
+    security_config = state.get("security_config", {}) or {}
+    require_approval = bool(state.get("require_approval", False))
 
     # Cascade collision gate: skip drafts already marked stale by an earlier
     # iteration's structural change (zero-tolerance mode only). The draft stays
@@ -119,6 +137,15 @@ def run_refinement_subgraph_node(state: AgentState) -> dict:
         "trivial": False,
         "structurally_changed": False,
         "intent_line": "",
+        "security_config": security_config,
+        "require_approval": require_approval,
+        "sanitized_search_results": None,
+        "security_retries": 0,
+        "blacklisted_sources": [],
+        "security_audit_result": {},
+        "security_route": "apply",
+        "offline_refinement": False,
+        "security_findings": [],
     }
 
     # Execute the subgraph. Per ADR-0005, a single draft failure is isolated:
@@ -150,6 +177,17 @@ def run_refinement_subgraph_node(state: AgentState) -> dict:
             if stale:
                 result["stale_drafts"] = [Path(s).name for s in stale]
             result["changed_drafts"] = [draft_path.name]
+
+        # Lift Zero-Trust security findings/blacklist/offline into the master
+        # state so a single per-run security report can be written (ADR-0020).
+        sec_findings = subgraph_result.get("security_findings", []) or []
+        sec_blacklist = subgraph_result.get("blacklisted_sources", []) or []
+        if sec_findings:
+            result["security_findings"] = sec_findings
+        if sec_blacklist:
+            result["blacklisted_sources"] = sec_blacklist
+        if subgraph_result.get("offline_refinement"):
+            result["offline_refinement"] = True
         return result
     except ZeroToleranceViolation:
         # Halt the entire batch — zero-tolerance violations demand HITL.

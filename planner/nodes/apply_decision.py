@@ -10,7 +10,7 @@ from planner.state import RefinementState
 from scripts.telemetry import orchestrator_phase
 from planner.nodes.evaluate_grade import load_adrs
 from planner.config import get_llm, resolve_model_config
-from planner.utils import extract_finish_reason
+from planner.utils import active_search_results, extract_finish_reason
 
 
 logger = logging.getLogger("planner.nodes.apply_decision")
@@ -154,7 +154,7 @@ def apply_decision_node(state: RefinementState) -> Dict[str, Any]:
         draft_path_str = state.get("draft_issue_path")
         best_option = state.get("best_option", {})
         all_grades = state.get("all_grades", [])
-        search_results = state.get("search_results", [])
+        search_results = active_search_results(state)
         critic_model_name = state.get("model_name", "unknown-model")
 
         if not draft_path_str:

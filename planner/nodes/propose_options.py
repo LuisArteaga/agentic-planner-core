@@ -3,7 +3,7 @@ import logging
 from typing import Dict, Any
 from langchain_core.messages import SystemMessage, HumanMessage
 from planner.state import RefinementState
-from planner.utils import extract_json_block
+from planner.utils import active_search_results, extract_json_block
 from scripts.telemetry import orchestrator_phase
 from planner.config import get_llm
 
@@ -16,7 +16,7 @@ def propose_options_node(state: RefinementState) -> Dict[str, Any]:
 
     with orchestrator_phase("propose_options"):
         draft_content = state.get("draft_issue_content", "")
-        search_results = state.get("search_results", [])
+        search_results = active_search_results(state)
 
         # Instantiate LangChain client configured for OpenRouter using get_llm
         model = get_llm("propose_options")

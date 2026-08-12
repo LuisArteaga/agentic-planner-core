@@ -1,6 +1,68 @@
 import re
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse
+
+
+def active_search_results(state: Any) -> List[Dict[str, Any]]:
+    """Return the search results a downstream node should reason over.
+
+    The Zero-Trust security audit (ADR-0020) may produce a cleaned view
+    (``sanitized_search_results``) that drops blacklisted sources, or an empty
+    list when the subgraph fell back to offline refinement. Until the audit
+    runs, that field is ``None`` and callers fall back to the accumulated
+    ``search_results`` list. Centralizing this here keeps the
+    ``search_results`` accumulation reducer (ADR-0013) untouched while letting
+    the security filtering/offline path take effect everywhere.
+    """
+    sanitized = state.get("sanitized_search_results")
+    if sanitized is not None:
+        return sanitized
+    return state.get("search_results", []) or []
+
+
+def domain_of(url: str) -> str:
+    """Lowercased host of ``url`` (strips a leading ``www.``). Empty on failure.
+
+    Shared source-keying helper used by the security audit and the web_search
+    retry filter (ADR-0020) so both blacklist against the same normalized
+    domain representation — preventing drift between two divergent
+    implementations.
+    """
+    try:
+        host = (urlparse(url).netloc or "").lower()
+    except Exception:
+        return ""
+    if host.startswith("www."):
+        host = host[4:]
+    return host
+
+
+def source_keys(result: Dict[str, Any]) -> List[str]:
+    """Lowercased URL + domain keys for a search result, for blacklist matching.
+
+    Shared by ``security_audit`` and ``web_search`` (ADR-0020) so both nodes
+    blacklist the same set of keys for a given source.
+    """
+    url = (result.get("url") or "").strip().lower()
+    domain = domain_of(url)
+    keys: List[str] = []
+    if url:
+        keys.append(url)
+    if domain:
+        keys.append(domain)
+    return keys
+
+
+def is_blacklisted(result: Dict[str, Any], blacklist: List[str]) -> bool:
+    """True iff any source key of ``result`` appears in ``blacklist``.
+
+    Shared by ``security_audit`` and ``web_search`` (ADR-0020).
+    """
+    if not blacklist:
+        return False
+    bl = {b.strip().lower() for b in blacklist if b}
+    return any(key in bl for key in source_keys(result))
 
 
 def extract_json_block(text: str) -> str:

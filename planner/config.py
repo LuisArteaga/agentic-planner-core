@@ -51,6 +51,32 @@ class SearchParametersConfig(BaseModel):
     excluded_domains: List[str] = Field(default_factory=list)
 
 
+class SecurityConfig(BaseModel):
+    """Zero-Trust prompt-injection defense configuration (ADR-0020).
+
+    Defense ranking (per the issue pre-selection verdict): the existing
+    ``strict`` source allowlist (structural control) plus the LLM Security
+    Judge plus the HITL publish gate are the PRIMARY defenses; the regex
+    pre-filter (``sanitize_inputs``) is a best-effort, fast, deterministic
+    aid only — blacklisting on regex alone is brittle (OWASP A03:2021).
+    """
+
+    sanitize_inputs: bool = True
+    audit_level: str = "normal"  # "off" | "normal" | "strict"
+    require_approval: bool = True
+    max_security_retries: int = 2
+
+    @model_validator(mode="after")
+    def _validate_audit_level(self) -> "SecurityConfig":
+        allowed = {"off", "normal", "strict"}
+        if self.audit_level not in allowed:
+            raise ValueError(
+                f"security.audit_level must be one of {sorted(allowed)}, "
+                f"got '{self.audit_level}'."
+            )
+        return self
+
+
 class SourcesConfig(BaseModel):
     """Pydantic schema for parsing and validating sources.toml configuration."""
 
@@ -58,6 +84,7 @@ class SourcesConfig(BaseModel):
     urls: List[str] = Field(default_factory=list)
     domains: List[str] = Field(default_factory=list)
     search: SearchParametersConfig = Field(default_factory=SearchParametersConfig)
+    security: SecurityConfig = Field(default_factory=SecurityConfig)
     zero_tolerance: Optional[Dict[str, Any]] = None
 
     @model_validator(mode="after")
@@ -281,6 +308,11 @@ def resolve_model_config(phase_or_node: str) -> dict:
             "AGENT_MODEL",
         ],
         "publish_issue": ["REFINE_PUBLISH_ISSUE_MODEL", "REFINE_MODEL", "AGENT_MODEL"],
+        "security_audit": [
+            "REFINE_SECURITY_AUDIT_MODEL",
+            "REFINE_MODEL",
+            "AGENT_MODEL",
+        ],
         "intent_gate": [
             "REFINE_INTENT_GATE_MODEL",
             "REFINE_MODEL",
@@ -319,6 +351,7 @@ def resolve_model_config(phase_or_node: str) -> dict:
                 "evaluate_grade",
                 "apply_decision",
                 "publish_issue",
+                "security_audit",
                 "intent_gate",
                 "planning_judge",
             ]:
@@ -344,6 +377,7 @@ def resolve_model_config(phase_or_node: str) -> dict:
         "evaluate_grade": "z-ai/glm-5.2",
         "apply_decision": "moonshotai/kimi-k2.7-code",
         "publish_issue": "moonshotai/kimi-k2.7-code",
+        "security_audit": "z-ai/glm-5.2",
         "intent_gate": "z-ai/glm-5.2",
         "planning_judge": "z-ai/glm-5.2",
         "syntax_lint": "moonshotai/kimi-k2.7-code",
@@ -389,6 +423,13 @@ def resolve_model_config(phase_or_node: str) -> dict:
             "Inceptron",
         ],
         "publish_issue": ["Together", "SiliconFlow", "MoonshotAI", "Inceptron"],
+        "security_audit": [
+            "Together",
+            "DeepInfra",
+            "Fireworks",
+            "Parasail",
+            "Inceptron",
+        ],
         "intent_gate": [
             "Together",
             "DeepInfra",
@@ -425,6 +466,7 @@ def resolve_model_config(phase_or_node: str) -> dict:
         "evaluate_grade": 8192,
         "intent_gate": 8192,
         "planning_judge": 8192,
+        "security_audit": 4096,
     }
 
     if overridden_model:

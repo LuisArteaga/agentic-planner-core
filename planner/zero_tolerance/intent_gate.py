@@ -16,6 +16,7 @@ from typing import Any, Dict
 from pydantic import BaseModel, Field
 
 from planner.state import RefinementState
+from planner.utils import active_search_results
 from planner.zero_tolerance.llm_utils import (
     build_search_context,
     invoke_structured_with_retry,
@@ -76,7 +77,7 @@ def intent_gate_node(state: RefinementState) -> Dict[str, Any]:
         if not refined_content:
             refined_content = state.get("draft_issue_content", "")
 
-        search_results = state.get("search_results", []) or []
+        search_results = active_search_results(state)
         best_option = state.get("best_option", {}) or {}
 
         # Load spec context (PRD + glossary + ADRs). The glossary path comes

@@ -58,6 +58,23 @@ class RefinementState(TypedDict, total=False):
     # Populated by the Intent Gate node.
     intent_line: str
 
+    # Zero-Trust Prompt-Injection Defense (ADR-0020). ``security_config``
+    # carries the per-run security knobs; ``security_audit`` is enabled when
+    # ``audit_level != "off"``. ``sanitized_search_results`` is ``None`` until
+    # the audit (or a retry re-entry of ``web_search``) produces a cleaned view;
+    # downstream nodes read it via ``active_search_results`` so an offline
+    # fallback (empty list) or a blacklisted-source filter takes effect without
+    # disturbing the accumulated ``search_results`` reducer.
+    security_config: Dict[str, Any]
+    sanitized_search_results: Any  # None | List[Dict[str, Any]]
+    security_retries: int
+    blacklisted_sources: Annotated[List[str], operator.add]
+    security_audit_result: Dict[str, Any]
+    security_route: str  # "apply" | "retry"
+    offline_refinement: bool
+    security_findings: Annotated[List[Dict[str, Any]], operator.add]
+    require_approval: bool
+
 
 class AgentState(TypedDict, total=False):
     """State schema for the Master Graph."""
@@ -90,3 +107,11 @@ class AgentState(TypedDict, total=False):
     changed_drafts: Annotated[List[str], operator.add]
     # Downstream drafts marked stale by the cascade collision gate.
     stale_drafts: Annotated[List[str], operator.add]
+
+    # Zero-Trust Prompt-Injection Defense (ADR-0020) — accumulated across the
+    # master loop so a single per-run security report can be written.
+    security_config: Dict[str, Any]
+    security_findings: Annotated[List[Dict[str, Any]], operator.add]
+    blacklisted_sources: Annotated[List[str], operator.add]
+    offline_refinement: bool
+    require_approval: bool
