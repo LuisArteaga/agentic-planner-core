@@ -45,6 +45,19 @@ class RefinementState(TypedDict, total=False):
     best_option: Dict[str, Any]
     all_grades: Annotated[List[Dict[str, Any]], operator.add]
 
+    # Zero-Error-Tolerance AddOn (ADR-0019). ``zero_tolerance`` enables the
+    # gates; ``zero_tolerance_config`` carries the deterministic thresholds.
+    zero_tolerance: bool
+    zero_tolerance_config: Dict[str, Any]
+    # Original structural signature (computed before refinement) used by the
+    # cascade collision gate to detect structural changes.
+    original_draft_signature: str
+    # Resolved by ``detect_structural_change_node`` after ``apply_decision``.
+    trivial: bool
+    structurally_changed: bool
+    # Populated by the Intent Gate node.
+    intent_line: str
+
 
 class AgentState(TypedDict, total=False):
     """State schema for the Master Graph."""
@@ -67,3 +80,13 @@ class AgentState(TypedDict, total=False):
     # these lists make partial runs honest and drive the terminal exit code.
     succeeded_drafts: Annotated[List[str], operator.add]
     failed_drafts: Annotated[List[str], operator.add]
+
+    # Zero-Error-Tolerance AddOn (ADR-0019).
+    zero_tolerance: bool
+    zero_tolerance_config: Dict[str, Any]
+    # filename -> blocker filenames, parsed once by the batch gate.
+    dependency_map: Dict[str, List[str]]
+    # Drafts whose structure changed during refinement (cascade trigger).
+    changed_drafts: Annotated[List[str], operator.add]
+    # Downstream drafts marked stale by the cascade collision gate.
+    stale_drafts: Annotated[List[str], operator.add]

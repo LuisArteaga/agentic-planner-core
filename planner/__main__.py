@@ -32,6 +32,16 @@ def main():
         default="config/sources.toml",
         help="Path to sources.toml configuration",
     )
+    refine_parser.add_argument(
+        "--zero-tolerance",
+        action="store_true",
+        default=False,
+        help=(
+            "Enable the Zero-Error-Tolerance Validation AddOn: deterministic "
+            "glossary, dependency-DAG, and ADR-traceability lints plus an Intent "
+            "Gate and Planning Judge. Any violation halts the batch (HITL)."
+        ),
+    )
 
     # grill command
     grill_parser = subparsers.add_parser(
@@ -159,6 +169,20 @@ def main():
                     "excluded_domains": config.sources.search.excluded_domains,
                 }
 
+                # Zero-Error-Tolerance AddOn (ADR-0019): resolve config from the
+                # optional [zero_tolerance] table, force-enabled by the CLI flag.
+                zt_config = config.get_zero_tolerance_config(
+                    cli_enabled=args.zero_tolerance
+                )
+
+                # Dependency map is needed by the cascade collision gate inside
+                # the master loop; parse it once from the drafts.
+                dependency_map: dict = {}
+                if zt_config.enabled and draft_files:
+                    from planner.zero_tolerance.gate import compute_dependency_map
+
+                    dependency_map = compute_dependency_map(draft_files)
+
                 initial_state: AgentState = {
                     "draft_issues": draft_files,
                     "current_issue_index": 0,
@@ -168,6 +192,11 @@ def main():
                     "status": "idle",
                     "succeeded_drafts": [],
                     "failed_drafts": [],
+                    "zero_tolerance": zt_config.enabled,
+                    "zero_tolerance_config": zt_config.model_dump(),
+                    "dependency_map": dependency_map,
+                    "changed_drafts": [],
+                    "stale_drafts": [],
                 }
 
                 # Abort at startup if strict mode is enabled but whitelist is empty
@@ -175,6 +204,34 @@ def main():
                     raise ValueError(
                         "Strict-mode is enabled (strict: true), but allowed_domains is empty. "
                         "At least one source must be defined."
+                    )
+
+                # Zero-Error-Tolerance batch gate: run the deterministic lints
+                # (glossary, dependency DAG, ADR traceability) over all drafts
+                # BEFORE the master loop. Any ERROR halts immediately (HITL).
+                if zt_config.enabled and draft_files:
+                    from planner.zero_tolerance.gate import run_batch_gate
+
+                    print("Running Zero-Error-Tolerance batch validation gate...")
+                    batch_result = run_batch_gate(draft_files, zt_config)
+                    if not batch_result.passed:
+                        print(
+                            "Zero-Error-Tolerance gate FAILED. Halting before "
+                            "refinement (human-in-the-loop required).",
+                            file=sys.stderr,
+                        )
+                        for finding in batch_result.errors():
+                            print(
+                                f"  - [{finding.check}] {finding.message}",
+                                file=sys.stderr,
+                            )
+                        raise ValueError(
+                            "Zero-Error-Tolerance validation gate failed: "
+                            f"{len(batch_result.errors())} error(s). See above."
+                        )
+                    print(
+                        f"Zero-Error-Tolerance gate passed "
+                        f"({len(batch_result.findings)} finding(s), 0 errors)."
                     )
 
                 # 4. Invoke graph
@@ -215,6 +272,8 @@ def main():
                     # field, so a partial run is reported honestly (#56).
                     failed_drafts = result.get("failed_drafts", [])
                     succeeded_drafts = result.get("succeeded_drafts", [])
+                    changed_drafts = result.get("changed_drafts", []) or []
+                    stale_drafts = result.get("stale_drafts", []) or []
                     if failed_drafts:
                         exit_code = 1
                         print(
@@ -230,6 +289,21 @@ def main():
                             f"Refinement process finished with status: success "
                             f"({len(succeeded_drafts)} draft(s) published)"
                         )
+                    # Zero-Error-Tolerance cascade collision gate report.
+                    if changed_drafts:
+                        print(
+                            f"Cascade collision gate: {len(changed_drafts)} draft(s) "
+                            f"structurally changed during refinement:"
+                        )
+                        for name in changed_drafts:
+                            print(f"  - {name}")
+                    if stale_drafts:
+                        print(
+                            f"Cascade collision gate: {len(stale_drafts)} downstream "
+                            f"draft(s) marked stale (left on disk for rerun):"
+                        )
+                        for name in stale_drafts:
+                            print(f"  - {name}")
                 else:
                     print("No draft issues found. Nothing to refine.")
         except Exception as e:

@@ -14,3 +14,16 @@ search_context_size = "short"
 max_results = 3
 max_total_results = 10
 excluded_domains = ["reddit.com"]
+
+# Zero-Error-Tolerance Validation AddOn (ADR-0019).
+# All fields optional; the AddOn is enabled via the `--zero-tolerance` CLI flag
+# or by setting `enabled = true` here.
+[zero_tolerance]
+enabled = false
+min_acceptable_score = 5.0
+max_fruitless_searches = 0
+trivial_max_lines = 15
+trivial_scopes = ["docs"]
+fail_on_stale = false
+context_path = "CONTEXT.md"
+adr_dirs = ["docs/adr", "docs/agdr"]

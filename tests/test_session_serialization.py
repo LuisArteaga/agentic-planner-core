@@ -997,6 +997,12 @@ def test_main_refine_command():
     mock_config.sources.domains = ["domain.com"]
     mock_config.sources.urls = ["https://github.com/owner/repo"]
     mock_config.get_github_session.return_value = mock_session
+    # Zero-Error-Tolerance AddOn is disabled by default (ADR-0019).
+    from planner.zero_tolerance.models import ZeroToleranceConfig
+
+    mock_config.get_zero_tolerance_config.return_value = ZeroToleranceConfig(
+        enabled=False
+    )
 
     with (
         patch("sys.argv", ["planner", "refine", "--config", "test-sources.toml"]),

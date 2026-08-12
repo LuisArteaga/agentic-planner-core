@@ -100,5 +100,45 @@ Dieses Dokument definiert die fachliche Terminologie für diesen Kontext. Es dar
 * **Geschäftsregeln**: Wird client-seitig über Streaming (SSE) direkt gegen OpenRouter gemessen. Wenn ein Judge-Modell kein Streaming unterstützt, ist TTFT undefiniert und wird als `null` (nicht 0) protokolliert.
 * **Synonyme / Abzugrenzende Begriffe**: Abzugrenzen von der Gesamtlatenz; TTFT erfasst ausschließlich den First-Byte-Anteil.
 
+### Zero-Error-Tolerance-Validierung (Zero-Error-Tolerance Validation)
+* **Definition**: Ein optionaler, strenger Qualitäts-Korridor für den Verfeinerungsprozess, der deterministische Prüfungen und semantische End-Audits vor dem Veröffentlichen einer Aufgabe erzwingt.
+* **Geschäftsregeln**: Ein Verstoß hält den gesamten Verfeinerungs-Batch sofort an und übergibt an den Menschen (Human-in-the-Loop), anstatt den Fehler autonom zu beheben. Die Kern-Prüfungen arbeiten vollständig deterministisch (keine LLM-Aufrufe). Wird über den CLI-Schalter `--zero-tolerance` aktiviert.
+* **Synonyme / Abzugrenzende Begriffe**: Nicht zu verwechseln mit der *Lösungsbewertung (Solution Grading)*, die numerische Noten für Lösungs-Optionen vergibt; die Zero-Error-Tolerance-Validierung prüft die strukturelle und semantische Gültigkeit der Aufgabe selbst.
+
+### Glossar-Linter (Glossary Linter)
+* **Definition**: Die deterministische Prüfung, die sicherstellt, dass eine Entwurfs-Aufgabe die kanonischen Begriffe des Fachglossars verwendet und keine als veraltet markierten Synonyme.
+* **Geschäftsregeln**: Verwendet eine Aufgabe ein veraltetes Synonym, ohne den kanonischen Begriff zu nennen, liegt ein Glossar-Verstoß vor, der den Prozess anhält.
+* **Synonyme / Abzugrenzende Begriffe**: Abzugrenzen vom *Glossar* selbst, das die Begriffe definiert; der Linter prüft lediglich die Einhaltung.
+
+### Abhängigkeits-Validator (Dependency Validator)
+* **Definition**: Die deterministische Prüfung des Abhängigkeits-Graphen der Entwurfs-Aufgaben auf Gültigkeit, Zyklenfreiheit und existente Referenzen.
+* **Geschäftsregeln**: Zirkuläre Abhängigkeiten und Referenzen auf unbekannte blockierende Aufgaben werden erkannt und gemeldet; der Prozess wird angehalten.
+* **Synonyme / Abzugrenzende Begriffe**: Nicht zu verwechseln mit der tracer-bullet-Zerlegung, die den Graphen erzeugt; der Validator prüft ihn.
+
+### ADR-Rückverfolgbarkeit (ADR Traceability)
+* **Definition**: Die deterministische Prüfung, dass jeder ADR-/AgDR-Verweis in einer Entwurfs-Aufgabe auf ein existierendes Entscheidungs-Dokument verweist.
+* **Geschäftsregeln**: Ein Verweis auf eine nicht existierende Architekturentscheidung wird als Fehler gemeldet.
+* **Synonyme / Abzugrenzende Begriffe**: Abzugrenzen vom *Agenten-Architekturentscheidungs-Dokument (AgDR)*, das Gegenstand der Prüfung ist.
+
+### Kaskaden-Kollisions-Gate (Cascade Collision Gate)
+* **Definition**: Der Mechanismus, der nachgelagerte Entwurfs-Aufgaben als veraltet markiert, wenn eine vorgelagerte Aufgabe bei der Verfeinerung strukturell angepasst wurde.
+* **Geschäftsregeln**: Eine strukturelle Änderung umfasst Änderungen der Abschnitts-Struktur, des Scopes oder der Abhängigkeits-Beziehungen, nicht jedoch Umformulierungen des Textes. Als veraltet markierte Aufgaben werden übersprungen und bleiben für eine erneute Durchlaufung auf der Festplatte.
+* **Synonyme / Abzugrenzende Begriffe**: Nicht zu verwechseln mit der *Sitzungs-Serialisierung*; die Markierung ist ein Datei-basierter Status, kein serialisierter Sitzungszustand.
+
+### Intent-Gate (Intent Gate)
+* **Definition**: Das semantische Tor, das vor dem Veröffentlichen einer Aufgabe eine INTENT-Zeile erzeugt und prüft, ob die Annahmen der Aufgabe, der Befund des Zielsystems und die Vorgabe der Spezifikation übereinstimmen.
+* **Geschäftsregeln**: Stimmen die drei Aspekte nicht überein, wird ein „Surprise" signalisiert und der Prozess angehalten. Die INTENT-Zeile folgt dem Muster: `INTENT: draft issue assumes <X>; target system/code shows <Y>; PRD/Glossary/ADR says <Z>`.
+* **Synonyme / Abzugrenzende Begriffe**: Adaptiert das Intent-Gate-Konzept der Fable Method auf die Planning-Zeit.
+
+### Planungs-Richter (Planning Judge)
+* **Definition**: Das finale semantische Audit vor dem Veröffentlichen, das die verfeinerte Aufgabe als Hypothese adversariell gegen die Spezifikation prüft.
+* **Geschäftsregeln**: Ein negativer Spruch hält den Prozess an. Der Richter bewertet nur, er schreibt die Aufgabe nicht um.
+* **Synonyme / Abzugrenzende Begriffe**: Abzugrenzen von den *binären PR-Judges* der CI/CD, die Pull-Requests bewerten; der Planungs-Richter bewertet Planning-Artefakte. Adaptiert den `fable-judge` (Prove) der Fable Method.
+
+### Trivialitäts-Gate (Triviality Gate)
+* **Definition**: Der deterministische Schnellpfad, der die semantischen Tore für triviale Entwurfs-Aufgaben überspringt, um Kosten zu sparen.
+* **Geschäftsregeln**: Eine Aufgabe gilt als trivial, wenn sie wenige Zeilen umfasst, keine Abhängigkeiten und ADR-Verweise deklariert und einem konfigurierten trivialen Scope (z. B. `docs`) angehört.
+* **Synonyme / Abzugrenzende Begriffe**: Abzugrenzen vom *Intent-Gate* und *Planungs-Richter*, die für nicht-triviale Aufgaben erzwungen werden.
+
 
 

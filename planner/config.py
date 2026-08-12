@@ -3,13 +3,16 @@ import pathlib
 import json
 import functools
 import logging
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, TYPE_CHECKING
 import tomllib
 from pydantic import BaseModel, Field, model_validator
 import requests
 from urllib3.util import Retry
 from requests.adapters import HTTPAdapter
 from langchain_openai import ChatOpenAI
+
+if TYPE_CHECKING:
+    from planner.zero_tolerance.models import ZeroToleranceConfig
 
 logger = logging.getLogger("planner.config")
 
@@ -55,6 +58,7 @@ class SourcesConfig(BaseModel):
     urls: List[str] = Field(default_factory=list)
     domains: List[str] = Field(default_factory=list)
     search: SearchParametersConfig = Field(default_factory=SearchParametersConfig)
+    zero_tolerance: Optional[Dict[str, Any]] = None
 
     @model_validator(mode="after")
     def validate_strict_sources(self) -> "SourcesConfig":
@@ -187,6 +191,21 @@ class AppConfig:
 
         return session
 
+    def get_zero_tolerance_config(
+        self, cli_enabled: bool = False
+    ) -> "ZeroToleranceConfig":
+        """Build the Zero-Error-Tolerance AddOn config from sources.toml + CLI flag.
+
+        The ``[zero_tolerance]`` table (optional) supplies thresholds; the CLI
+        ``--zero-tolerance`` flag force-enables the AddOn.
+        """
+        from planner.zero_tolerance.models import ZeroToleranceConfig
+
+        raw = self.sources.zero_tolerance or {}
+        data = dict(raw)
+        data["enabled"] = bool(data.get("enabled", False)) or cli_enabled
+        return ZeroToleranceConfig.model_validate(data)
+
 
 class ModelConfig(BaseModel):
     """Configuration for a specific LLM model used by a phase, node, or judge."""
@@ -262,6 +281,16 @@ def resolve_model_config(phase_or_node: str) -> dict:
             "AGENT_MODEL",
         ],
         "publish_issue": ["REFINE_PUBLISH_ISSUE_MODEL", "REFINE_MODEL", "AGENT_MODEL"],
+        "intent_gate": [
+            "REFINE_INTENT_GATE_MODEL",
+            "REFINE_MODEL",
+            "AGENT_MODEL",
+        ],
+        "planning_judge": [
+            "REFINE_PLANNING_JUDGE_MODEL",
+            "REFINE_MODEL",
+            "AGENT_MODEL",
+        ],
         "syntax_lint": ["PR_SYNTAX_LINT_MODEL", "AGENT_MODEL"],
         "test_coverage": ["PR_TEST_COVERAGE_MODEL", "AGENT_MODEL"],
         "architecture": ["PR_ARCHITECTURE_MODEL", "AGENT_MODEL"],
@@ -290,6 +319,8 @@ def resolve_model_config(phase_or_node: str) -> dict:
                 "evaluate_grade",
                 "apply_decision",
                 "publish_issue",
+                "intent_gate",
+                "planning_judge",
             ]:
                 factory_cfg = factory.refine_graph_nodes.get(phase_or_node)
             elif phase_or_node in [
@@ -313,6 +344,8 @@ def resolve_model_config(phase_or_node: str) -> dict:
         "evaluate_grade": "z-ai/glm-5.2",
         "apply_decision": "moonshotai/kimi-k2.7-code",
         "publish_issue": "moonshotai/kimi-k2.7-code",
+        "intent_gate": "z-ai/glm-5.2",
+        "planning_judge": "z-ai/glm-5.2",
         "syntax_lint": "moonshotai/kimi-k2.7-code",
         "test_coverage": "moonshotai/kimi-k2.7-code",
         "architecture": "z-ai/glm-5.2",
@@ -356,6 +389,20 @@ def resolve_model_config(phase_or_node: str) -> dict:
             "Inceptron",
         ],
         "publish_issue": ["Together", "SiliconFlow", "MoonshotAI", "Inceptron"],
+        "intent_gate": [
+            "Together",
+            "DeepInfra",
+            "Fireworks",
+            "Parasail",
+            "Inceptron",
+        ],
+        "planning_judge": [
+            "Together",
+            "DeepInfra",
+            "Fireworks",
+            "Parasail",
+            "Inceptron",
+        ],
         "syntax_lint": ["Together", "SiliconFlow", "MoonshotAI", "Inceptron"],
         "test_coverage": ["Together", "SiliconFlow", "MoonshotAI", "Inceptron"],
         "architecture": ["Together", "DeepInfra", "Fireworks", "Parasail", "Inceptron"],
@@ -376,6 +423,8 @@ def resolve_model_config(phase_or_node: str) -> dict:
     default_max_tokens = {
         "apply_decision": 16384,
         "evaluate_grade": 8192,
+        "intent_gate": 8192,
+        "planning_judge": 8192,
     }
 
     if overridden_model:
