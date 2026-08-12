@@ -12,6 +12,7 @@
     "evaluate_grade": { "model": "z-ai/glm-5.2", "routing": ["Together", "DeepInfra", "Fireworks", "Parasail", "Inceptron"], "temperature": 0.0, "max_tokens": 8192 },
     "apply_decision": { "model": "moonshotai/kimi-k2.7-code", "routing": ["Together", "SiliconFlow", "MoonshotAI", "Inceptron"], "temperature": 0.0, "max_tokens": 16384 },
     "publish_issue": { "model": "moonshotai/kimi-k2.7-code", "routing": ["Together", "SiliconFlow", "MoonshotAI", "Inceptron"], "temperature": 0.0 },
+    "security_audit": { "model": "z-ai/glm-5.2", "routing": ["Together", "DeepInfra", "Fireworks", "Parasail", "Inceptron"], "temperature": 0.0, "max_tokens": 4096 },
     "intent_gate": { "model": "z-ai/glm-5.2", "routing": ["Together", "DeepInfra", "Fireworks", "Parasail", "Inceptron"], "temperature": 0.0, "max_tokens": 8192 },
     "planning_judge": { "model": "z-ai/glm-5.2", "routing": ["Together", "DeepInfra", "Fireworks", "Parasail", "Inceptron"], "temperature": 0.0, "max_tokens": 8192 }
   },

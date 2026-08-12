@@ -95,6 +95,162 @@ class PublishNodeTests(unittest.TestCase):
             mock_sleep.assert_called_once()
 
     @patch("requests.Session")
+    @patch("planner.nodes.publish_issue.time.sleep")
+    def test_publish_issue_node_publishes_refined_disk_content(
+        self, mock_sleep, mock_session_class
+    ):
+        """Publish must post the REFINED content on disk, not the original
+        draft in state — otherwise the security audit / refinement is bypassed
+        (ADR-0020). Regression test for a latent publish bug."""
+        mock_session = MagicMock()
+        mock_session_class.return_value = mock_session
+        mock_label_response = MagicMock(status_code=200)
+        mock_session.get.return_value = mock_label_response
+        mock_issue_response = MagicMock(status_code=201)
+        mock_issue_response.json.return_value = {
+            "number": 7,
+            "html_url": "http://github.com/org/repo/issues/7",
+        }
+        mock_session.post.return_value = mock_issue_response
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            os.environ["GITHUB_WORKSPACE"] = temp_dir
+            draft_file = Path(temp_dir) / "0001-refined.md"
+            refined_body = "# Refined Title\nRefined body after audit."
+            draft_file.write_text(refined_body, encoding="utf-8")
+
+            state: RefinementState = {
+                # state holds the ORIGINAL; disk holds the refined content.
+                "draft_issue_content": "# Original Title\nOriginal body.",
+                "draft_issue_path": str(draft_file),
+                "strict_mode": False,
+                "allowed_domains": [],
+                "messages": [],
+                "keywords": [],
+                "search_queries": [],
+                "search_results": [],
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "model_name": "",
+                "status": "idle",
+                "proposed_options": [],
+                "best_option": {},
+                "all_grades": [],
+            }
+
+            publish_issue_node(state)
+
+            mock_session.post.assert_any_call(
+                "https://api.github.com/repos/org/repo/issues",
+                json={
+                    "title": "Refined Title",
+                    "body": "Refined body after audit.",
+                    "labels": ["agent-ready"],
+                },
+            )
+
+    @patch("planner.nodes.publish_issue._confirm_publish", return_value=False)
+    @patch("requests.Session")
+    def test_hitl_decline_skips_publish(self, mock_session_class, mock_confirm):
+        """When the HITL gate declines, no GitHub POST is made (ADR-0020)."""
+        mock_session = MagicMock()
+        mock_session_class.return_value = mock_session
+        mock_session.get.return_value = MagicMock(status_code=200)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            os.environ["GITHUB_WORKSPACE"] = temp_dir
+            draft_file = Path(temp_dir) / "0001-x.md"
+            draft_file.write_text("# Title\nbody", encoding="utf-8")
+            state: RefinementState = {
+                "draft_issue_content": "# Title\nbody",
+                "draft_issue_path": str(draft_file),
+                "strict_mode": False,
+                "allowed_domains": [],
+                "messages": [],
+                "keywords": [],
+                "search_queries": [],
+                "search_results": [],
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "model_name": "",
+                "status": "idle",
+                "proposed_options": [],
+                "best_option": {},
+                "all_grades": [],
+                "require_approval": True,
+            }
+            out = publish_issue_node(state)
+        self.assertEqual(out["status"], "skipped_by_hitl")
+        mock_session.post.assert_not_called()
+
+    @patch("planner.nodes.publish_issue._confirm_publish", return_value=True)
+    @patch("planner.nodes.publish_issue.time.sleep")
+    @patch("requests.Session")
+    def test_hitl_approve_publishes(self, mock_session_class, mock_sleep, mock_confirm):
+        """When the HITL gate approves, the GitHub POST is made (ADR-0020)."""
+        mock_session = MagicMock()
+        mock_session_class.return_value = mock_session
+        mock_session.get.return_value = MagicMock(status_code=200)
+        mock_issue_res = MagicMock(status_code=201)
+        mock_issue_res.json.return_value = {"number": 9, "html_url": "u"}
+        mock_session.post.return_value = mock_issue_res
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            os.environ["GITHUB_WORKSPACE"] = temp_dir
+            draft_file = Path(temp_dir) / "0001-y.md"
+            draft_file.write_text("# Title\nbody", encoding="utf-8")
+            state: RefinementState = {
+                "draft_issue_content": "# Title\nbody",
+                "draft_issue_path": str(draft_file),
+                "strict_mode": False,
+                "allowed_domains": [],
+                "messages": [],
+                "keywords": [],
+                "search_queries": [],
+                "search_results": [],
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "model_name": "",
+                "status": "idle",
+                "proposed_options": [],
+                "best_option": {},
+                "all_grades": [],
+                "require_approval": True,
+            }
+            out = publish_issue_node(state)
+        self.assertEqual(out["status"], "success")
+        mock_confirm.assert_called_once()
+        mock_session.post.assert_called_once()
+
+    def test_confirm_publish_yes_auto_approves(self):
+        from planner.nodes.publish_issue import _confirm_publish
+
+        self.assertTrue(
+            _confirm_publish(
+                title="t",
+                body="b",
+                original_content="b",
+                refined_path=Path("nonexistent.md"),
+                require_approval=False,
+            )
+        )
+
+    @patch("planner.nodes.publish_issue.sys.stdin")
+    def test_confirm_publish_non_tty_auto_approves(self, mock_stdin):
+        from planner.nodes.publish_issue import _confirm_publish
+
+        mock_stdin.isatty.return_value = False
+        self.assertTrue(
+            _confirm_publish(
+                title="t",
+                body="b",
+                original_content="b",
+                refined_path=Path("nonexistent.md"),
+                require_approval=True,
+            )
+        )
+
+    @patch("requests.Session")
     def test_publish_issue_node_missing_label_created(self, mock_session_class):
         mock_session = MagicMock()
         mock_session_class.return_value = mock_session

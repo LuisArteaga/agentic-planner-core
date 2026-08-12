@@ -1,6 +1,23 @@
 import re
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Dict, List, Optional
+
+
+def active_search_results(state: Any) -> List[Dict[str, Any]]:
+    """Return the search results a downstream node should reason over.
+
+    The Zero-Trust security audit (ADR-0020) may produce a cleaned view
+    (``sanitized_search_results``) that drops blacklisted sources, or an empty
+    list when the subgraph fell back to offline refinement. Until the audit
+    runs, that field is ``None`` and callers fall back to the accumulated
+    ``search_results`` list. Centralizing this here keeps the
+    ``search_results`` accumulation reducer (ADR-0013) untouched while letting
+    the security filtering/offline path take effect everywhere.
+    """
+    sanitized = state.get("sanitized_search_results")
+    if sanitized is not None:
+        return sanitized
+    return state.get("search_results", []) or []
 
 
 def extract_json_block(text: str) -> str:

@@ -15,6 +15,16 @@ max_results = 3
 max_total_results = 10
 excluded_domains = ["reddit.com"]
 
+# Zero-Trust Prompt-Injection Defense (ADR-0020).
+# Defense ranking: strict source allowlist (above) + LLM Security Judge +
+# HITL publish gate are PRIMARY; sanitize_inputs (regex) is a best-effort
+# pre-filter only. audit_level: "off" | "normal" | "strict".
+[security]
+sanitize_inputs = true
+audit_level = "normal"
+require_approval = true
+max_security_retries = 2
+
 # Zero-Error-Tolerance Validation AddOn (ADR-0019).
 # All fields optional; the AddOn is enabled via the `--zero-tolerance` CLI flag
 # or by setting `enabled = true` here.

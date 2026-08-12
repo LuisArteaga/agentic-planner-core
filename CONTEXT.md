@@ -140,5 +140,30 @@ Dieses Dokument definiert die fachliche Terminologie für diesen Kontext. Es dar
 * **Geschäftsregeln**: Eine Aufgabe gilt als trivial, wenn sie wenige Zeilen umfasst, keine Abhängigkeiten und ADR-Verweise deklariert und einem konfigurierten trivialen Scope (z. B. `docs`) angehört.
 * **Synonyme / Abzugrenzende Begriffe**: Abzugrenzen vom *Intent-Gate* und *Planungs-Richter*, die für nicht-triviale Aufgaben erzwungen werden.
 
+### Sicherheits-Audit (Security Audit)
+* **Definition**: Die automatisierte Überprüfung von Recherche-Ergebnissen und generierten Aufgabenspezifikationen auf fachliche Manipulationsversuche (Indirekte Prompt-Injektionen) vor deren Veröffentlichung.
+* **Geschäftsregeln**: Jedes durch eine externe Quelle angereicherte Dokument durchläuft das Audit. Primäre Verteidigung sind die strukturelle Trennung (Quellen-Whitelist / Strict-Modus), der LLM-Sicherheitsrichter und das Veröffentlichungs-Tor; ein optionaler Regex-Vorfilter ist lediglich eine best-effort-Hilfe und darf allein (im Modus „normal") keine Quelle sperren. Wird eine Manipulation erkannt, wird die Quelle für diese Sitzung gesperrt. Der Audit-Knoten sitzt zwischen Lösungs­bewertung und Entscheidungs­anwendung.
+* **Synonyme / Abzugrenzende Begriffe**: Abzugrenzen von der *Lösungsbewertung (Solution Grading)*, die numerische Noten für Lösungs-Optionen vergibt; das Sicherheits-Audit prüft auf Einflussnahme, nicht auf Lösungsqualität.
+
+### Quellen-Sperrliste (Blacklisted Sources)
+* **Definition**: Die Sitzungs-lokale Menge an Quellen (URLs oder Domains), die das Sicherheits-Audit als Träger eines Injektionsversuchs identifiziert und für die laufende Verfeinerung gesperrt hat.
+* **Geschäftsregeln**: Gesperrte Quellen werden aus den aktiven Recherche-Ergebnissen herausgefiltert; ein Selbstheilungs-Retry führt die Suche ohne diese Quellen erneut aus. Die Sperrliste ist nicht persistent — sie gilt nur für den laufenden Batch.
+* **Synonyme / Abzugrenzende Begriffe**: Abzugrenzen von der konfigurierten *Quellen-Konfiguration (Source Configuration)*, die dauerhafte Vertrauens­instanzen definiert; die Sperrliste ist ein transienter Sicherheits­zustand.
+
+### Offline-Verfeinerung (Offline Refinement)
+* **Definition**: Der Rückfallmodus der autonomen Verfeinerungsphase, bei dem eine Entwurfs-Aufgabe ausschließlich auf Basis des lokalen Ziel-Repositories und vorhandener Architektur­entscheidungen verfeinert wird, weil externe Quellen nach wiederholten Sicherheits­warnungen gesperrt wurden.
+* **Geschäftsregeln**: Wird automatisch aktiviert, wenn das Sicherheits-Audit die erlaubte Anzahl an Selbstheilungs-Retrys erschöpft hat oder nach dem Filtern der Sperrliste keine sauberen Recherche-Ergebnisse mehr verbleiben. Alle externen Recherche-Ergebnisse werden verworfen.
+* **Synonyme / Abzugrenzende Begriffe**: Abzugrenzen vom regulären, extern-belegten Verfeinerungs­pfad; die Offline-Verfeinerung verzichtet bewusst auf externe Evidenz.
+
+### Sicherheitsbericht (Security Report)
+* **Definition**: Der lokal erzeugte Markdown-Bericht, der alle Sicherheits-Audit-Ergebnisse eines Verfeinerungs-Batches dokumentiert.
+* **Geschäftsregeln**: Wird pro Ausführung einmal geschrieben und enthält je Aufgabe die festgestellten Injektionsversuche, die gesperrten Quellen sowie ob die Aufgabe in die *Offline-Verfeinerung* fallen musste. Der Bericht dient der menschlichen Nachvollziehbarkeit und löst selbst keine Blockade aus.
+* **Synonyme / Abzugrenzende Begriffe**: Abzugrenzen von der *Judge-Evaluierungssuite (Judge Evaluation Suite)*, die Judge-Modelle kalibriert; der Sicherheitsbericht protokolliert Laufzeit-Ergebnisse des Sicherheits-Audits.
+
+### Veröffentlichungs-Tor (Publish Gate)
+* **Definition**: Das optionale Human-in-the-Loop-Tor, das vor dem Aufruf der GitHub-API die finale Aufgaben-Spezifikation anzeigt und eine menschliche Freigabe einholt.
+* **Geschäftsregeln**: Wird über die Quellen-Konfiguration (`require_approval`) sowie die CLI-Schalter `--interactive` (erzwingen) und `--yes` (auto-freigeben) gesteuert. In nicht-interaktiver Umgebung (kein TTY) wird es protokolliert und automatisch freigegeben, um CI-Läufe nicht zu blockieren.
+* **Synonyme / Abzugrenzende Begriffe**: Abzugrenzen vom *Planungs-Richter (Planning Judge)*, der eine Spezifikations-Konformität semantisch prüft; das Veröffentlichungs-Tor prüft nicht, sondern fragt eine menschliche Freigabe.
+
 
 
