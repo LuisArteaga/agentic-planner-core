@@ -146,34 +146,32 @@ class ApplyDecisionTests(unittest.TestCase):
             agdr_content = agdr_file.read_text(encoding="utf-8")
             self.assertIn("# 0001 - Use Sqlite Cache", agdr_content)
             self.assertIn("* **Status**: Accepted", agdr_content)
-            self.assertIn(
-                "* **Entscheidungsträger**: google/gemini-2.5-flash", agdr_content
-            )
+            self.assertIn("* **Decision Maker**: google/gemini-2.5-flash", agdr_content)
             self.assertIn("* **Trigger-Issue**: 0005-issue.md", agdr_content)
             self.assertIn(
                 "* **Y-Statement**: In the context of caching, facing high latency, we decided to use sqlite to achieve speed.",
                 agdr_content,
             )
             self.assertIn(
-                "## Kontext und Problemstellung\nWe need structured cache storage.",
+                "## Context and Problem Statement\nWe need structured cache storage.",
                 agdr_content,
             )
             self.assertIn(
-                "## Entscheidungsfaktoren (Drivers)\n* speed\n* simplicity",
+                "## Decision Drivers\n* speed\n* simplicity",
                 agdr_content,
             )
-            self.assertIn("## Betrachtete Optionen", agdr_content)
+            self.assertIn("## Options Considered", agdr_content)
             self.assertIn("| SQLite | 9.0/10.0 | 9/10 | Fast and local |", agdr_content)
             self.assertIn("| Redis | 7.5/10.0 | 7/10 | In-memory cache |", agdr_content)
             self.assertIn(
-                "## Entscheidung\nWe chose SQLite because it runs in-process.",
+                "## Decision\nWe chose SQLite because it runs in-process.",
                 agdr_content,
             )
             self.assertIn(
-                "* **Positiv**:\n* Fast reads\n* No extra server", agdr_content
+                "* **Positive**:\n* Fast reads\n* No extra server", agdr_content
             )
             self.assertIn(
-                "## Inspiration & Referenzen\n* https://sqlite.org", agdr_content
+                "## Inspiration & References\n* https://sqlite.org", agdr_content
             )
 
     @patch("planner.nodes.apply_decision.get_llm")
