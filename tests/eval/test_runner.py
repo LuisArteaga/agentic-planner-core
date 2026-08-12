@@ -17,7 +17,7 @@ project_root = os.path.dirname(
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from planner.eval.judge import BINARY_JUDGE_TYPES, judge  # noqa: E402
+from planner.eval.judge import judge  # noqa: E402
 from planner.eval.models import BINEVALResult, JudgeMetrics  # noqa: E402
 from planner.eval.runner import load_fixtures, run_eval  # noqa: E402
 from planner.eval.report import to_json, to_markdown  # noqa: E402
@@ -57,9 +57,32 @@ def make_fail_response():
 # ------------------------------- Fixtures ----------------------------------
 
 
-@pytest.mark.parametrize("judge_type", BINARY_JUDGE_TYPES)
-def test_fixtures_exist_for_each_judge(judge_type):
-    samples = load_fixtures("tests/eval/fixtures", judge_type)
+def test_fixtures_exist_syntax_lint():
+    samples = load_fixtures("tests/eval/fixtures", "syntax_lint")
+    assert len(samples) >= 1
+    for s in samples:
+        assert s.diff
+        assert isinstance(s.expected_passed, bool)
+
+
+def test_fixtures_exist_test_coverage():
+    samples = load_fixtures("tests/eval/fixtures", "test_coverage")
+    assert len(samples) >= 1
+    for s in samples:
+        assert s.diff
+        assert isinstance(s.expected_passed, bool)
+
+
+def test_fixtures_exist_architecture():
+    samples = load_fixtures("tests/eval/fixtures", "architecture")
+    assert len(samples) >= 1
+    for s in samples:
+        assert s.diff
+        assert isinstance(s.expected_passed, bool)
+
+
+def test_fixtures_exist_security():
+    samples = load_fixtures("tests/eval/fixtures", "security")
     assert len(samples) >= 1
     for s in samples:
         assert s.diff
