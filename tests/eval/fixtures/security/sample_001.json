@@ -1,0 +1,11 @@
+{
+  "id": "security_safe_input",
+  "diff": "diff --git a/app/api.py b/app/api.py\n--- a/app/api.py\n+++ b/app/api.py\n@@ -5,3 +5,9 @@ def handle_query(user_input: str):\n+    import subprocess\n+    # User input is validated against an allowlist before use\n+    if user_input not in ALLOWED_COMMANDS:\n+        raise ValueError(\"disallowed command\")\n+    return subprocess.run([\"git\", user_input], capture_output=True, text=True)\n",
+  "expected_passed": true,
+  "expected_score": 1.0,
+  "expected_verdict": "PASS",
+  "diff_token_count": 70,
+  "metadata": {
+    "description": "User input validated against an allowlist before subprocess invocation."
+  }
+}

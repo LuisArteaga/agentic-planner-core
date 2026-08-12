@@ -1,0 +1,11 @@
+{
+  "id": "architecture_compliant",
+  "diff": "diff --git a/planner/nodes/web_search.py b/planner/nodes/web_search.py\n--- a/planner/nodes/web_search.py\n+++ b/planner/nodes/web_search.py\n@@ -10,3 +10,8 @@ def web_search_node(state):\n     \"\"\"Node that performs the OpenRouter web search.\"\"\"\n+    from planner.config import get_llm\n+    model = get_llm(\"web_search\")\n+    result = model.invoke([{\"role\": \"user\", \"content\": \"query\"}])\n+    return {\"search_results\": result.content}\n",
+  "expected_passed": true,
+  "expected_score": 1.0,
+  "expected_verdict": "PASS",
+  "diff_token_count": 65,
+  "metadata": {
+    "description": "Node stays within the planner layer, reuses get_llm, no cross-boundary call."
+  }
+}

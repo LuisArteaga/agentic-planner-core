@@ -1,0 +1,123 @@
+name: LLM-Judge Eval Suite
+
+# Reusable regression-evaluation workflow for LLM judge model swaps (issue #43).
+# Triggered on config/factory.json changes and manually, and consumable via
+# workflow_call from agentic-developer-core.
+
+on:
+  workflow_call:
+    inputs:
+      judge_type:
+        description: "Judge type to evaluate (syntax_lint|test_coverage|architecture|security). Use 'all' for every binary judge."
+        required: false
+        type: string
+        default: "all"
+      model:
+        description: "OpenRouter model id overriding config/factory.json for this run. Empty = factory default."
+        required: false
+        type: string
+        default: ""
+  workflow_dispatch:
+    inputs:
+      judge_type:
+        description: "Judge type (or 'all')"
+        required: false
+        default: "all"
+      model:
+        description: "OpenRouter model id override (optional)"
+        required: false
+        default: ""
+  push:
+    branches: [main]
+    paths:
+      - "config/factory.json"
+
+permissions:
+  contents: read
+
+env:
+  AGENT_MODE: ci
+
+jobs:
+  eval:
+    name: Judge regression eval
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Validate OpenRouter API key
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          if [ -z "$OPENROUTER_API_KEY" ]; then
+            echo "[ERR] OPENROUTER_API_KEY secret not configured."
+            exit 1
+          fi
+
+      - name: Set up Python
+        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b # v5.3.0
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -e .[dev]
+
+      - name: Resolve judge list
+        id: judges
+        env:
+          JUDGE_INPUT: ${{ inputs.judge_type }}
+        run: |
+          # Validate against an allowlist to prevent shell injection via user input.
+          jt="$JUDGE_INPUT"
+          case "$jt" in
+            ""|"all") jt="all" ;;
+            syntax_lint|test_coverage|architecture|security|evaluate_grade) ;;
+            *)
+              echo "::error::Invalid judge_type. Allowed: syntax_lint, test_coverage, architecture, security, evaluate_grade, all"
+              exit 1
+              ;;
+          esac
+          echo "list=$jt" >> "$GITHUB_OUTPUT"
+
+      - name: Run eval suite
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          GITHUB_WORKSPACE: ${{ github.workspace }}
+          MODEL_INPUT: ${{ inputs.model }}
+          JUDGE_LIST: ${{ steps.judges.outputs.list }}
+        run: |
+          # Validate model id against a safe character set (no shell metacharacters).
+          model_arg="$MODEL_INPUT"
+          model_flag=()
+          if [ -n "$model_arg" ]; then
+            if ! printf '%s' "$model_arg" | grep -qE '^[a-zA-Z0-9._/-]+$'; then
+              echo "::error::Invalid model id: contains disallowed characters"
+              exit 1
+            fi
+            model_flag=(--model "$model_arg")
+          fi
+
+          jt="$JUDGE_LIST"
+          if [ "$jt" = "all" ]; then
+            for j in syntax_lint test_coverage architecture security; do
+              echo "::group::Eval: $j"
+              python -m planner eval --judge "$j" "${model_flag[@]}" \
+                --results-json "results_${j}.json" || echo "::warning::Eval for $j failed"
+              echo "::endgroup::"
+            done
+          else
+            python -m planner eval --judge "$jt" "${model_flag[@]}" \
+              --results-json "results_${jt}.json"
+          fi
+
+      - name: Upload results.json artifact
+        if: always()
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+        with:
+          name: eval-results
+          path: results_*.json
+          if-no-files-found: warn
+          retention-days: 30

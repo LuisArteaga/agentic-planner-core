@@ -1,6 +1,7 @@
 import argparse
 import glob
 import logging
+import os
 import sys
 import warnings
 from pathlib import Path
@@ -56,6 +57,32 @@ def main():
     subparsers.add_parser(
         "draft",
         help="Generate draft issues from PRD centrally (draft-issues).",
+    )
+
+    # eval command
+    eval_parser = subparsers.add_parser(
+        "eval",
+        help="Run the LLM-Judge regression evaluation suite against a gold standard.",
+    )
+    eval_parser.add_argument(
+        "--judge",
+        required=True,
+        help="Judge type to evaluate (syntax_lint, test_coverage, architecture, "
+        "security). evaluate_grade is a placeholder (ADR-0017).",
+    )
+    eval_parser.add_argument(
+        "--model",
+        help="OpenRouter model id overriding config/factory.json for this run.",
+    )
+    eval_parser.add_argument(
+        "--fixtures-dir",
+        default="tests/eval/fixtures",
+        help="Directory holding the gold-standard fixtures.",
+    )
+    eval_parser.add_argument(
+        "--results-json",
+        default="results.json",
+        help="Path to write the results.json artifact.",
     )
 
     args = parser.parse_args()
@@ -211,6 +238,40 @@ def main():
         finally:
             from scripts.telemetry import end_orchestrator_loop
 
+            end_orchestrator_loop(exit_code=exit_code)
+
+        if exit_code != 0:
+            sys.exit(exit_code)
+    elif args.command == "eval":
+        from scripts.telemetry import (
+            init_telemetry,
+            start_orchestrator_loop,
+            end_orchestrator_loop,
+        )
+        from planner.eval.runner import run_eval
+        from planner.eval.report import to_markdown, write_results_json, write_summary
+
+        init_telemetry()
+        start_orchestrator_loop()
+        exit_code = 0
+        try:
+            workspace_dir = os.environ.get("GITHUB_WORKSPACE")
+            result = run_eval(
+                judge_type=args.judge,
+                model=args.model,
+                fixtures_dir=args.fixtures_dir,
+                workspace_dir=workspace_dir,
+            )
+            json_path = write_results_json(result, path=args.results_json)
+            summary_path = write_summary(result)
+            print(to_markdown(result))
+            if summary_path:
+                print(f"\nMarkdown summary appended to {summary_path}")
+            print(f"results.json written to {json_path}")
+        except Exception as e:
+            print(f"Error: {e}", file=sys.stderr)
+            exit_code = 1
+        finally:
             end_orchestrator_loop(exit_code=exit_code)
 
         if exit_code != 0:
