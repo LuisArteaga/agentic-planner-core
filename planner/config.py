@@ -501,26 +501,24 @@ def resolve_model_config(phase_or_node: str) -> dict:
         model = overridden_model
         routing = None
         # Inherit temperature/options from factory if model matches, otherwise defaults
-        if factory_cfg and factory_cfg.model == overridden_model:
+        factory_model_matches = (
+            factory_cfg is not None and factory_cfg.model == overridden_model
+        )
+        if factory_model_matches:
+            assert factory_cfg is not None  # narrows for type-checkers
             temperature = (
                 factory_cfg.temperature if factory_cfg.temperature is not None else 0.0
             )
             options = factory_cfg.options
             max_tokens = factory_cfg.max_tokens
+            timeout_seconds = factory_cfg.timeout_seconds
+            max_retries = factory_cfg.max_retries
         else:
             temperature = 0.0
             options = default_options.get(phase_or_node)
             max_tokens = default_max_tokens.get(phase_or_node)
-        timeout_seconds = (
-            factory_cfg.timeout_seconds
-            if factory_cfg and factory_cfg.model == overridden_model
-            else None
-        )
-        max_retries = (
-            factory_cfg.max_retries
-            if factory_cfg and factory_cfg.model == overridden_model
-            else None
-        )
+            timeout_seconds = None
+            max_retries = None
     else:
         # Use factory config or fallback
         if factory_cfg:
