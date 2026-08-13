@@ -806,3 +806,43 @@ class RefinementNodesTests(unittest.TestCase):
             # The failed draft is recorded; the later success did NOT clobber it.
             self.assertEqual(result["failed_drafts"], [str(file_1)])
             self.assertEqual(result["succeeded_drafts"], [str(file_2)])
+
+    @patch("planner.refine_graph.refine_subgraph")
+    def test_master_graph_draft_timeout_is_isolated(self, mock_subgraph):
+        """A per-draft wall-clock budget overrun (ADR-0021) is isolated like any
+        per-draft failure: recorded in failed_drafts, batch continues (ADR-0005)."""
+        from planner.timeout import DraftTimeoutError
+
+        mock_subgraph.invoke.side_effect = [
+            DraftTimeoutError("exceeded 1800s budget"),
+            {"status": "success"},
+        ]
+
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            file_1 = Path(temp_dir) / "issue1.md"
+            file_2 = Path(temp_dir) / "issue2.md"
+            file_1.write_text("Draft issue 1 content", encoding="utf-8")
+            file_2.write_text("Draft issue 2 content", encoding="utf-8")
+
+            initial_state: AgentState = {
+                "draft_issues": [str(file_1), str(file_2)],
+                "current_issue_index": 0,
+                "strict_mode": False,
+                "allowed_domains": [],
+                "search_params": {"engine": "exa"},
+                "status": "idle",
+                "succeeded_drafts": [],
+                "failed_drafts": [],
+            }
+
+            from planner.refine_graph import graph
+
+            result = graph.invoke(initial_state)
+
+            self.assertEqual(result["current_issue_index"], 2)
+            # The timed-out draft is recorded as failed; the batch continued.
+            self.assertEqual(result["failed_drafts"], [str(file_1)])
+            self.assertEqual(result["succeeded_drafts"], [str(file_2)])

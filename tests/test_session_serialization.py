@@ -987,6 +987,10 @@ def test_main_refine_command():
 
     mock_response = MagicMock()
     mock_response.json.return_value = {"resources": {"core": {"remaining": 100}}}
+    # The rate-limit check uses the response as a context manager (#71) —
+    # __enter__ must return the configured response (like requests.Response).
+    mock_response.__enter__.return_value = mock_response
+    mock_response.__exit__.return_value = False
 
     mock_session = MagicMock()
     mock_session.get.return_value = mock_response

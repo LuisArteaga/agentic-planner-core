@@ -283,7 +283,17 @@ def test_get_llm_construction(clean_env):
             assert called_kwargs["openai_api_base"] == "https://openrouter.ai/api/v1"
             assert called_kwargs["openai_api_key"] == "test-key"
             assert called_kwargs["use_responses_api"] is False
-            assert called_kwargs["timeout"] == 600.0
+            import httpx as _httpx
+
+            timeout = called_kwargs["timeout"]
+            assert isinstance(timeout, _httpx.Timeout)
+            # read == configured timeout_seconds (default 600); connect/write/pool tight.
+            assert timeout.read == 600.0
+            assert timeout.connect == 10.0
+            assert timeout.write == 30.0
+            assert timeout.pool == 30.0
+            # No silent SDK retry stacking (ADR-0021).
+            assert called_kwargs["max_retries"] == 0
 
             # extra_body is passed as a first-class kwarg (NOT nested in model_kwargs)
             extra_body = called_kwargs["extra_body"]
@@ -509,3 +519,34 @@ def test_get_llm_returns_subclass_without_extra_body_in_model_kwargs(clean_env):
         llm = get_llm("web_search")
     assert isinstance(llm, OpenRouterAnnotationChatOpenAI)
     assert "extra_body" not in (llm.model_kwargs or {})
+
+
+def test_get_llm_factory_timeout_and_retry_overrides(clean_env):
+    """Per-node ``timeout_seconds``/``max_retries`` overrides flow into the client (ADR-0021)."""
+    os.environ["OPENROUTER_API_KEY"] = "test-key"
+    os.environ["GH_PAT"] = "test-pat"
+    os.environ["GITHUB_REPOSITORY"] = "test/repo"
+
+    import httpx as _httpx
+    from unittest.mock import patch, MagicMock
+    from planner.config import get_llm
+
+    with patch("planner.config.resolve_model_config") as mock_resolve:
+        mock_resolve.return_value = {
+            "model": "deepseek/deepseek-v4-pro",
+            "routing": None,
+            "temperature": 0.0,
+            "options": None,
+            "max_tokens": 8192,
+            "timeout_seconds": 120.0,
+            "max_retries": 1,
+        }
+        with patch("planner.config.OpenRouterAnnotationChatOpenAI") as mock_cls:
+            mock_cls.return_value = MagicMock()
+            get_llm("propose_options")
+            called_kwargs = mock_cls.call_args[1]
+            timeout = called_kwargs["timeout"]
+            assert isinstance(timeout, _httpx.Timeout)
+            assert timeout.read == 120.0  # factory override honored
+            assert timeout.connect == 10.0
+            assert called_kwargs["max_retries"] == 1  # factory override honored

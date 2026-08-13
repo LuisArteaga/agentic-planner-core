@@ -1,7 +1,10 @@
 import logging
+import os
 from pathlib import Path
+from typing import cast
 from langgraph.graph import StateGraph, END
 from planner.state import AgentState, RefinementState
+from planner.timeout import DraftTimeoutError, run_with_wall_timeout
 from planner.nodes.analyze_sources import analyze_sources_node
 from planner.nodes.web_search import web_search_node
 from planner.nodes.propose_options import propose_options_node
@@ -21,6 +24,11 @@ from planner.zero_tolerance.models import ZeroToleranceViolation
 from planner.zero_tolerance.planning_judge import planning_judge_node
 
 logger = logging.getLogger("planner.refine_graph")
+
+# Per-draft wall-clock budget (ADR-0021). Caps the sum of sequential LLM calls
+# within a single draft so bounded per-call timeouts cannot stack into hours.
+# Overridable via the ``REFINE_DRAFT_BUDGET_S`` env var; ``<= 0`` disables it.
+DEFAULT_DRAFT_BUDGET_SECONDS = 1800.0
 
 # Define and compile the Refinement Subgraph
 subgraph_workflow = StateGraph(RefinementState)
@@ -157,8 +165,25 @@ def run_refinement_subgraph_node(state: AgentState) -> dict:
     # Zero-tolerance violations are the exception (ADR-0019): they HALT the
     # entire batch immediately (HITL) instead of being isolated per-draft.
     draft_path_str = str(draft_path)
+    # Per-draft wall-clock budget (ADR-0021): a hard SIGALRM deadline that
+    # interrupts an in-flight blocking LLM call in place when the cumulative
+    # draft runtime exceeds the budget. ``DraftTimeoutError`` is a regular
+    # ``Exception`` and is caught by the generic ``except`` below, so a timed-out
+    # draft is isolated like any other per-draft failure (ADR-0005) — recorded
+    # in ``failed_drafts`` and left on disk for a rerun.
+    budget_env = os.environ.get("REFINE_DRAFT_BUDGET_S")
+    budget_seconds: float | None
+    if budget_env is None or budget_env.strip() == "":
+        budget_seconds = DEFAULT_DRAFT_BUDGET_SECONDS
+    else:
+        budget_seconds = float(budget_env)
     try:
-        subgraph_result = refine_subgraph.invoke(subgraph_input)
+        subgraph_result = cast(
+            dict,
+            run_with_wall_timeout(
+                refine_subgraph.invoke, budget_seconds, subgraph_input
+            ),
+        )
         result: dict = {
             "current_issue_index": idx + 1,
             "succeeded_drafts": [draft_path_str],
@@ -192,6 +217,18 @@ def run_refinement_subgraph_node(state: AgentState) -> dict:
     except ZeroToleranceViolation:
         # Halt the entire batch — zero-tolerance violations demand HITL.
         raise
+    except DraftTimeoutError:
+        # Per-draft budget exceeded (ADR-0021): isolate like any per-draft
+        # failure — left on disk for a rerun (ADR-0005).
+        logger.warning(
+            f"Draft {draft_path} exceeded its wall-clock budget ({budget_seconds}s) "
+            f"and was aborted. It is left on disk for a rerun."
+        )
+        return {
+            "current_issue_index": idx + 1,
+            "succeeded_drafts": [],
+            "failed_drafts": [draft_path_str],
+        }
     except Exception as e:
         logger.error(f"Error processing draft issue {draft_path}: {e}", exc_info=True)
         return {
