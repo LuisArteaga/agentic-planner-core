@@ -16,11 +16,19 @@ ARCH_DOC = Path(__file__).resolve().parents[1] / "docs" / "architecture.md"
 
 @pytest.fixture(scope="module")
 def arch_text() -> str:
-    assert ARCH_DOC.exists(), f"Missing end-to-end architecture doc: {ARCH_DOC}"
+    """Load the architecture doc once for the whole module.
+
+    Existence is asserted by ``test_architecture_doc_file_exists`` so a missing
+    file surfaces as a clear failure rather than an opaque fixture error.
+    """
     return ARCH_DOC.read_text(encoding="utf-8")
 
 
-def test_architecture_doc_exists(arch_text: str) -> None:
+def test_architecture_doc_file_exists() -> None:
+    assert ARCH_DOC.exists(), f"Missing end-to-end architecture doc: {ARCH_DOC}"
+
+
+def test_architecture_doc_has_title(arch_text: str) -> None:
     assert "# How agentic-planner-core Works" in arch_text
 
 
