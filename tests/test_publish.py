@@ -509,6 +509,10 @@ class MainRateLimitTests(unittest.TestCase):
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {"resources": {"core": {"remaining": 45}}}
+        # The rate-limit check uses the response as a context manager (#71) —
+        # __enter__ must return the configured response (like requests.Response).
+        mock_response.__enter__.return_value = mock_response
+        mock_response.__exit__.return_value = False
         mock_session.get.return_value = mock_response
 
         from planner.__main__ import main
@@ -543,6 +547,10 @@ class MainRefineStatusTests(unittest.TestCase):
         mock_rate_response.json.return_value = {
             "resources": {"core": {"remaining": remaining}}
         }
+        # The rate-limit check uses the response as a context manager (#71) —
+        # __enter__ must return the configured response (like requests.Response).
+        mock_rate_response.__enter__.return_value = mock_rate_response
+        mock_rate_response.__exit__.return_value = False
         mock_session.get.return_value = mock_rate_response
         mock_config.get_github_session.return_value = mock_session
         return mock_config

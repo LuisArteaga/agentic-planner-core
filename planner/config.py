@@ -9,12 +9,28 @@ from pydantic import BaseModel, Field, model_validator
 import requests
 from urllib3.util import Retry
 from requests.adapters import HTTPAdapter
+import httpx
 from langchain_openai import ChatOpenAI
 
 if TYPE_CHECKING:
     from planner.zero_tolerance.models import ZeroToleranceConfig
 
 logger = logging.getLogger("planner.config")
+
+# Per-call LLM transport timeout defaults (ADR-0021). The ``read`` phase equals
+# ``timeout_seconds`` — for a *non-streaming* call no bytes arrive until the
+# provider finishes computing, so ``read`` bounds the maximum legitimate
+# generation time (e.g. ``thinking: max``). ``connect``/``write``/``pool`` are
+# tight so a dead/unreachable endpoint fails fast instead of consuming the full
+# ``read`` budget.
+DEFAULT_LLM_TIMEOUT_SECONDS = 600.0
+DEFAULT_LLM_CONNECT_TIMEOUT = 10.0
+DEFAULT_LLM_WRITE_TIMEOUT = 30.0
+DEFAULT_LLM_POOL_TIMEOUT = 30.0
+# No silent SDK retries: a never-responding endpoint must break after *one*
+# timeout window, not ``(max_retries + 1) * timeout``. Retry isolation lives at
+# the application layer (per-query / per-draft, ADR-0005).
+DEFAULT_LLM_MAX_RETRIES = 0
 
 
 def load_env_file(filepath: str = ".env") -> None:
@@ -242,6 +258,17 @@ class ModelConfig(BaseModel):
     temperature: Optional[float] = None
     options: Optional[Dict[str, Any]] = None
     max_tokens: Optional[int] = None
+    # Per-call transport timeout (seconds) applied as the httpx ``read`` phase —
+    # the maximum generation time for a non-streaming call before the call is
+    # aborted. Bounded phases below are derived from it (ADR-0021). ``None`` →
+    # ``DEFAULT_LLM_TIMEOUT_SECONDS``.
+    timeout_seconds: Optional[float] = None
+    # SDK-level retry count. Defaults to ``0`` (no silent stacking) — retry
+    # isolation is handled at the application layer (per-query try/except in
+    # ``web_search``, per-draft try/except in the master loop, ADR-0005). A
+    # non-zero value multiplies the effective worst-case per-call budget
+    # (``(max_retries + 1) * timeout``); see ADR-0021.
+    max_retries: Optional[int] = None
 
 
 class FactoryConfig(BaseModel):
@@ -484,6 +511,16 @@ def resolve_model_config(phase_or_node: str) -> dict:
             temperature = 0.0
             options = default_options.get(phase_or_node)
             max_tokens = default_max_tokens.get(phase_or_node)
+        timeout_seconds = (
+            factory_cfg.timeout_seconds
+            if factory_cfg and factory_cfg.model == overridden_model
+            else None
+        )
+        max_retries = (
+            factory_cfg.max_retries
+            if factory_cfg and factory_cfg.model == overridden_model
+            else None
+        )
     else:
         # Use factory config or fallback
         if factory_cfg:
@@ -498,12 +535,16 @@ def resolve_model_config(phase_or_node: str) -> dict:
                 if factory_cfg.max_tokens is not None
                 else default_max_tokens.get(phase_or_node)
             )
+            timeout_seconds = factory_cfg.timeout_seconds
+            max_retries = factory_cfg.max_retries
         else:
             model = default_models.get(phase_or_node, "z-ai/glm-5.2")
             routing = default_routing.get(phase_or_node)
             temperature = 0.0
             options = default_options.get(phase_or_node)
             max_tokens = default_max_tokens.get(phase_or_node)
+            timeout_seconds = None
+            max_retries = None
 
     return {
         "model": model,
@@ -511,6 +552,8 @@ def resolve_model_config(phase_or_node: str) -> dict:
         "temperature": temperature,
         "options": options,
         "max_tokens": max_tokens,
+        "timeout_seconds": timeout_seconds,
+        "max_retries": max_retries,
     }
 
 
@@ -597,6 +640,29 @@ def get_llm(
     if options:
         extra_body.update(options)
 
+    # Transport-level timeout enforcement (ADR-0021). A bare float ``timeout``
+    # only bounds the read phase and leaves ``connect`` unbounded; langchain-openai
+    # / openai-python default to ``max_retries=2`` (3 attempts), which multiplies
+    # the worst-case per-call budget and silently stacks sequential calls into a
+    # multi-hour hang. We use an explicit ``httpx.Timeout`` with tight connect /
+    # write / pool phases and disable SDK retries (isolation is app-level).
+    timeout_seconds = (
+        cfg["timeout_seconds"]
+        if cfg.get("timeout_seconds") is not None
+        else DEFAULT_LLM_TIMEOUT_SECONDS
+    )
+    max_retries = (
+        cfg["max_retries"]
+        if cfg.get("max_retries") is not None
+        else DEFAULT_LLM_MAX_RETRIES
+    )
+    timeout_config = httpx.Timeout(
+        connect=DEFAULT_LLM_CONNECT_TIMEOUT,
+        read=timeout_seconds,
+        write=DEFAULT_LLM_WRITE_TIMEOUT,
+        pool=DEFAULT_LLM_POOL_TIMEOUT,
+    )
+
     return OpenRouterAnnotationChatOpenAI(
         model=model_name,
         temperature=temperature,
@@ -605,5 +671,6 @@ def get_llm(
         openai_api_key=api_key,
         use_responses_api=False,
         extra_body=extra_body or None,
-        timeout=600.0,  # Prevent indefinite hangs on OpenRouter API calls while allowing long reasoning generations
+        timeout=timeout_config,
+        max_retries=max_retries,
     )

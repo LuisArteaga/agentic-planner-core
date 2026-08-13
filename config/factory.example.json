@@ -8,7 +8,7 @@
   "refine_graph_nodes": {
     "analyze_sources": { "model": "provider/model-name-flash", "routing": ["ProviderA", "ProviderB"], "options": { "thinking": "high" } },
     "web_search": { "model": "provider/model-name-flash", "routing": ["ProviderA", "ProviderB"], "options": { "thinking": "none" } },
-    "propose_options": { "model": "provider/model-name-reasoning", "routing": ["ProviderA", "ProviderB"], "options": { "thinking": "max" } },
+    "propose_options": { "model": "provider/model-name-reasoning", "routing": ["ProviderA", "ProviderB"], "options": { "thinking": "max" }, "timeout_seconds": 600, "max_retries": 0 },
     "evaluate_grade": { "model": "provider/model-name", "routing": ["ProviderA", "ProviderB"], "temperature": 0.0 },
     "apply_decision": { "model": "provider/model-name-code", "routing": ["ProviderA"], "temperature": 0.0 },
     "publish_issue": { "model": "provider/model-name-code", "routing": ["ProviderA"], "temperature": 0.0 }

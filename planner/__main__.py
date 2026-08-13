@@ -6,6 +6,8 @@ import sys
 import warnings
 from pathlib import Path
 
+import requests
+
 from planner.config import AppConfig
 from planner.state import AgentState
 from planner.refine_graph import graph
@@ -15,6 +17,22 @@ from scripts.telemetry import (
 
 # Suppress harmless Pydantic serialization warnings from OpenRouter custom tools mismatch
 warnings.filterwarnings("ignore", message=".*PydanticSerializationUnexpectedValue.*")
+
+
+def _check_github_rate_limit(
+    session: "requests.Session", draft_count: int
+) -> tuple[int, int]:
+    """Query the GitHub rate-limit endpoint and return ``(remaining, required)``.
+
+    The response is consumed inside a context manager so the underlying socket is
+    closed immediately — previously the bare ``session.get`` left a ``CLOSE-WAIT``
+    socket leaking for the lifetime of the process (#71).
+    """
+    required = max(50, draft_count * 3)
+    with session.get("https://api.github.com/rate_limit") as response:
+        response.raise_for_status()
+        remaining = response.json()["resources"]["core"]["remaining"]
+    return remaining, required
 
 
 def main():
@@ -274,11 +292,9 @@ def main():
                     session = config.get_github_session()
 
                     print("Checking GitHub API rate limit quota...")
-                    response = session.get("https://api.github.com/rate_limit")
-                    response.raise_for_status()
-
-                    remaining = response.json()["resources"]["core"]["remaining"]
-                    required = max(50, len(draft_files) * 3)
+                    remaining, required = _check_github_rate_limit(
+                        session, len(draft_files)
+                    )
                     print(
                         f"GitHub API quota remaining: {remaining} (required: {required})"
                     )
@@ -289,6 +305,10 @@ def main():
                             f"Remaining: {remaining}, required: {required}."
                         )
 
+                    # ``agent_logs/review.log`` is written ONLY by
+                    # ``scripts/review.py`` (CI PR judges), never by the
+                    # ``refine`` CLI — do not use it to debug a refine run
+                    # (see .agents/AGENTS.md "Diagnosing a hung run").
                     print("Starting refinement process...")
                     # Enable INFO-level logging so node logger.info() calls appear on console
                     logging.basicConfig(
