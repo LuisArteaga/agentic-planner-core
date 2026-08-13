@@ -4,6 +4,8 @@
 
 By separating the planning and refinement phases, it prevents context rot and isolates web searches to short-lived single-issue workflows.
 
+> 📖 **New here?** [`docs/architecture.md`](./docs/architecture.md) documents the full end-to-end behavior: the three phases, the refinement LangGraph (with diagrams), every CLI flag, and the safety/quality gates. This README covers setup and the high-level flow.
+
 ---
 
 ## Workflow Overview
