@@ -69,5 +69,5 @@ loudly so this validator and the template stay in sync.
 - [`lucasbento/auto-close-issues`](https://github.com/marketplace/actions/auto-close-issues):
   third-party marketplace action that parses `.github/ISSUE_TEMPLATE` titles.
   This repo owns the validator instead, matching the zero-new-dependency
-  convention established by `scripts/secret_scan.py`.
+  convention of the quality-gates-toolkit secret-scan.
 - [Configuring issue templates — GitHub Docs](https://docs.github.com/communities/using-templates-to-encourage-useful-issues-and-pull-requests/configuring-issue-templates-for-your-repository)

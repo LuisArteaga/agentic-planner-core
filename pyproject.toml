@@ -18,7 +18,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0.0",
-    "ruff==0.15.20",
+    "ruff==0.16.6",
     "mypy>=1.0.0",
     "pytest-cov>=4.0.0",
     "pip-audit>=2.0.0",
@@ -39,6 +39,14 @@ ignore_missing_imports = true
 check_untyped_defs = true
 explicit_package_bases = true
 disable_error_code = ["call-arg", "dict-item", "assignment"]
+
+[tool.ruff.lint]
+# Freeze the ruff <=0.15 default rule set. Ruff 0.16.0 expanded the default
+# rules from 59 to 413 (I001/UP/BLE/... now fire repo-wide); adopting them
+# is a dedicated migration, not part of the toolkit consumption (ADR-0022).
+# The toolkit-pinned CI ruff (0.16.6) reads this config, so local and CI
+# stay in agreement.
+select = ["E4", "E7", "E9", "F"]
 
 [tool.coverage.run]
 omit = [

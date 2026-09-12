@@ -77,19 +77,24 @@ Repositories liefern ein Top-Level-Paket namens `scripts` aus — die lokale
 Wir wählen **Option 3**:
 
 1. **CI**: `.github/workflows/pr-checks.yml` wird zum Komposit
-   `LuisArteaga/quality-gates-toolkit/.github/workflows/pr-checks.yml@v1.6.0`
+   `LuisArteaga/quality-gates-toolkit/.github/workflows/python-checks.yml@v1.7.0`
+   (Retarget v1.6.0 → v1.7.0 mit dem per-Language-Komposit aus D-0020: für ein
+   Python-only-Repository die One-Call-Ergonomie ohne `Skipped`-Einträge der
+   JS-Gates; das polyglotte `pr-checks.yml` bliebe sonst mit drei dauerhaft
+   übersprungenen Jobs zurück)
    (`coverage-floor: 80`, Diff-Coverage-Gate aktiv, `lint-paths`/`scan-paths`
    `planner tests scripts`, `cov-paths` `planner`). Geheimnisse: das vorhandene
    `OPENROUTER_API_KEY` und `GH_PAT` (als `judge-token`-Eingang, Name bleibt).
    `vars.REVIEW_MODEL` entfällt; `config/factory.json` ist alleinige Quelle
    der Judge-Modelle (env-Overrides bleiben als dokumentierte Ausnahmen).
 2. **Pre-Commit**: Der lokale `secret-scan`-Hook wird durch den Toolkit-Hook
-   (`rev: v1.6.0`) ersetzt; der astral-ruff-Rev wird auf die CI-Version
+   (`rev: v1.7.0`) ersetzt; der astral-ruff-Rev wird auf die CI-Version
    angehoben (v0.16.6). Seit Toolkit v1.6.0 (D-0016) stammen auch `mypy`
    (System-Env-Hook, beratend — der CI-Pin bleibt maßgeblich), `semgrep`
    (gepinnt 1.177.0) und `pip-audit` (gepinnt 2.10.1, jeweils isolierte
-   Umgebung) aus der Toolkit-Hook-Sammlung (`rev: v1.6.0`); die lokalen
-   Hook-Definitionen entfallen.
+   Umgebung) aus der Toolkit-Hook-Sammlung (`rev: v1.7.0`); die lokalen
+   Hook-Definitionen entfallen. v1.7.0 ändert die Hook-Sammlung und die
+   Werkzeug-Pins (ruff 0.16.6 / mypy 2.3.1) nicht — nur die Composite-Refs.
 3. **Evaluierung**: Die vier Judge-Prompts, `evaluate_response` und
    `load_architecture_context` wandern als Snapshot nach `planner/eval/`;
    danach entfallen `scripts/review.py`, `scripts/review.sh`,
@@ -114,7 +119,7 @@ Wir wählen **Option 3**:
   begrenzt durch das paketierungsseitige Follow-up (Austausch des Snapshots
   gegen die echte Paket-API). Das CI hängt an der Verfügbarkeit eines
   externen, öffentlichen Repos (gepinnter Ref mindert das Risiko). Lokales
-  `mypy` bleibt über den Toolkit-Hook (v1.6.0, D-0016) beratend und
+  `mypy` bleibt über den Toolkit-Hook (v1.7.0, D-0016) beratend und
   ungepinnt — maßgeblich ist der gepinnte CI-`mypy`.
 
 ## Inspiration & Referenzen
@@ -133,6 +138,12 @@ Wir wählen **Option 3**:
   künftiger Austausch des Prompts-Snapshots (Follow-up) bestehen, wird
   hier aber nicht konsumiert.
   <https://github.com/LuisArteaga/quality-gates-toolkit/releases/tag/v1.6.0>
+* **Toolkit v1.7.0 Release Notes (Retarget-Grundlage)**: Per-Language-Komposit
+  `python-checks.yml` (D-0020, PR #36) — One-Call-Ergonomie für
+  Python-only-Consumer ohne `Skipped`-Einträge; Gate-Toggles der
+  Sprach-Composites default-ON (D-0004 bleibt neutral beim polyglotten
+  Komposit). Hook-Sammlung und Werkzeug-Pins unverändert gegenüber v1.6.0.
+  <https://github.com/LuisArteaga/quality-gates-toolkit/releases/tag/v1.7.0>
 * **Toolkit DECISIONS D-0012**: „The harness owns the environment, the
   project owns the tools“ — Vorbild für den künftigen System-Env-`mypy`-Hook
   und die Schichtung aus lokaler beratender und CI-verbindlicher Ebene.

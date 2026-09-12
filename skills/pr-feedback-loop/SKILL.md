@@ -9,7 +9,7 @@ Poll an open PR for LLM PR Review Judge verdicts and CI status. Act on actionabl
 
 ## Context
 
-This repository gates PRs with four LLM judges via `scripts/review.py` (runs in the `pr-checks` CI workflow). The judges post a single GitHub review with a human-readable summary and a hidden machine-parseable verdict block at the end.
+This repository gates PRs with four LLM judges run by the `quality-gates-toolkit` composite workflow (`.github/workflows/pr-checks.yml`, pinned `v1.7.0` — ADR-0022). The judges post a single GitHub review with a human-readable summary and a hidden machine-parseable verdict block at the end.
 
 ## The Judges
 
@@ -92,8 +92,10 @@ gh pr comment <PR_NUMBER> --body "<summary of unresolved findings>"
 
 ## Source Locators
 
-- Judge keys: `scripts/review.py:90` (`JUDGE_KEYS`)
-- Verdict block builder (inline in `main()`): `scripts/review.py:781` (`hidden_lines`)
-- Merge-blocking logic: `scripts/review.py:788` (`overall_failed`)
-- Review submission: `scripts/review.py:312` (`submit_github_review`)
-- CI workflow: `.github/workflows/pr-checks.yml` (the `Run LLM review` step pipes the diff into `scripts/review.sh`)
+The judge engine lives in the toolkit (pinned `v1.7.0`):
+`quality_gates_toolkit/review.py` at <https://github.com/LuisArteaga/quality-gates-toolkit/blob/v1.7.0/quality_gates_toolkit/review.py>.
+
+- Judge keys: `review.py:1308` (`JUDGE_KEYS`)
+- Verdict block builder (inline in the report builder): `review.py:1723` (`hidden_lines`)
+- Review submission: `review.py:862` (`submit_github_review`)
+- CI workflow: `.github/workflows/pr-checks.yml` (composite call with `enable-llm-review: true`)

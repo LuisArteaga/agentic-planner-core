@@ -1,6 +1,7 @@
 """OpenRouter streaming chat-completions client for the eval suite.
 
-Distinct from ``scripts/review.py``'s non-streaming ``urllib`` call: the eval
+Distinct from the CI judges' non-streaming ``urllib`` call (quality-gates
+toolkit engine): the eval
 suite requires Time-To-First-Token (TTFT) measurement (ADR-0003 keeps
 OpenRouter as the sole gateway), which demands SSE streaming. The
 ``usage`` object — including ``cost`` — is returned in the final SSE chunk.
