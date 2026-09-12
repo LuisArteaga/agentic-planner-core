@@ -77,17 +77,19 @@ Repositories liefern ein Top-Level-Paket namens `scripts` aus — die lokale
 Wir wählen **Option 3**:
 
 1. **CI**: `.github/workflows/pr-checks.yml` wird zum Komposit
-   `LuisArteaga/quality-gates-toolkit/.github/workflows/pr-checks.yml@v1.4.0`
+   `LuisArteaga/quality-gates-toolkit/.github/workflows/pr-checks.yml@v1.6.0`
    (`coverage-floor: 80`, Diff-Coverage-Gate aktiv, `lint-paths`/`scan-paths`
    `planner tests scripts`, `cov-paths` `planner`). Geheimnisse: das vorhandene
    `OPENROUTER_API_KEY` und `GH_PAT` (als `judge-token`-Eingang, Name bleibt).
    `vars.REVIEW_MODEL` entfällt; `config/factory.json` ist alleinige Quelle
    der Judge-Modelle (env-Overrides bleiben als dokumentierte Ausnahmen).
 2. **Pre-Commit**: Der lokale `secret-scan`-Hook wird durch den Toolkit-Hook
-   (`rev: v1.4.0`) ersetzt; der astral-ruff-Rev wird auf die CI-Version
-   angehoben (v0.16.6). Die Hooks `mypy`, `semgrep`, `pip-audit` bleiben
-   unverändert bestehen, bis das Toolkit seine Python-Hook-Sammlung
-   (`mypy` als System-Env-Hook, `semgrep`/`pip-audit` gepinnt) ausliefert.
+   (`rev: v1.6.0`) ersetzt; der astral-ruff-Rev wird auf die CI-Version
+   angehoben (v0.16.6). Seit Toolkit v1.6.0 (D-0016) stammen auch `mypy`
+   (System-Env-Hook, beratend — der CI-Pin bleibt maßgeblich), `semgrep`
+   (gepinnt 1.177.0) und `pip-audit` (gepinnt 2.10.1, jeweils isolierte
+   Umgebung) aus der Toolkit-Hook-Sammlung (`rev: v1.6.0`); die lokalen
+   Hook-Definitionen entfallen.
 3. **Evaluierung**: Die vier Judge-Prompts, `evaluate_response` und
    `load_architecture_context` wandern als Snapshot nach `planner/eval/`;
    danach entfallen `scripts/review.py`, `scripts/review.sh`,
@@ -112,7 +114,8 @@ Wir wählen **Option 3**:
   begrenzt durch das paketierungsseitige Follow-up (Austausch des Snapshots
   gegen die echte Paket-API). Das CI hängt an der Verfügbarkeit eines
   externen, öffentlichen Repos (gepinnter Ref mindert das Risiko). Lokales
-  `mypy` bleibt bis zum Toolkit-Hook advisory und ungepinnt.
+  `mypy` bleibt über den Toolkit-Hook (v1.6.0, D-0016) beratend und
+  ungepinnt — maßgeblich ist der gepinnte CI-`mypy`.
 
 ## Inspiration & Referenzen
 
@@ -123,6 +126,13 @@ Wir wählen **Option 3**:
 * **ADR-0008 / ADR-0014 / ADR-0015**: Mehrstufige Judges, Merge-Blocking und
   Hidden-Verdict-Block — das Verdict-Protokoll wird mit dieser Entscheidung
   vom Toolkit weitergeführt (D-0002 im Toolkit ist der versionierte Vertrag).
+* **Toolkit v1.6.0 Release Notes**: Lokale Python-Tool-Hooks (`mypy`
+  beratend im Consumer-Env, `semgrep` 1.177.0 und `pip-audit` 2.10.1
+  gepinnt in isolierter Umgebung, D-0016) sowie die importierbare
+  `quality_gates_toolkit`-Judge-Paket-API (D-0017) — Letztere bleibt als
+  künftiger Austausch des Prompts-Snapshots (Follow-up) bestehen, wird
+  hier aber nicht konsumiert.
+  <https://github.com/LuisArteaga/quality-gates-toolkit/releases/tag/v1.6.0>
 * **Toolkit DECISIONS D-0012**: „The harness owns the environment, the
   project owns the tools“ — Vorbild für den künftigen System-Env-`mypy`-Hook
   und die Schichtung aus lokaler beratender und CI-verbindlicher Ebene.
