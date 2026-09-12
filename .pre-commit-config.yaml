@@ -1,35 +1,31 @@
+# Quality gates — fast ADVISORY layer for the agent commit loop (ADR-0022).
+# The binding, toolkit-pinned gate layer is CI
+# (.github/workflows/pr-checks.yml, composite @v1.6.0); the pinned CI mypy
+# is authoritative (toolkit D-0012), the `mypy` hook below runs advisory in
+# the consumer environment. The toolkit ships no ruff hook — the astral
+# rev is consumer-owned and kept in lockstep with the toolkit-pinned CI
+# ruff (0.16.6 at toolkit v1.6.0).
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.3.0
+    rev: v0.16.6
     hooks:
       - id: ruff
         args: [ --fix ]
       - id: ruff-format
 
-  - repo: local
+  - repo: https://github.com/LuisArteaga/quality-gates-toolkit
+    rev: v1.6.0
     hooks:
       - id: secret-scan
-        name: Secret Scan (Local)
-        entry: python3 scripts/secret_scan.py --staged
-        language: system
-        pass_filenames: false
+      # Consumer-owned mypy from this project's environment (toolkit D-0016):
+      # advisory layer — the pinned CI mypy (2.3.1) is authoritative. Target
+      # paths are supplied via args (toolkit README hook contract).
       - id: mypy
-        name: Mypy (Local)
-        entry: .venv/bin/mypy planner tests scripts
-        language: script
-        pass_filenames: false
-
-
-  - repo: https://github.com/semgrep/semgrep
-    rev: v1.65.0
-    hooks:
+        args: [planner, tests, scripts]
+      # The toolkit hook runs `semgrep scan` in an isolated pinned env
+      # (pass_filenames: false, always_run); scope the advisory scan to the
+      # source tree like the previous local definition.
       - id: semgrep
-        name: Semgrep (Fast Local Scan)
-        args: ['--config=p/security-audit', '--jobs=0', '--skip-unknown-extensions', '--quiet']
-        types_or: [python, json, yaml]
-
-  - repo: https://github.com/pypa/pip-audit
-    rev: v2.10.1
-    hooks:
+        args: ['--config=p/security-audit', '--jobs=0', '--skip-unknown-extensions', '--quiet', 'planner', 'tests', 'scripts']
       - id: pip-audit
         args: ["."]

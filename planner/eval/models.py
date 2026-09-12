@@ -15,7 +15,8 @@ from pydantic import BaseModel, Field
 class BINEVALResult(BaseModel):
     """The outcome of a single binary judge invocation.
 
-    Mirrors the verdict semantics of ``scripts/review.py``:
+    Mirrors the verdict semantics of the CI PR judges
+    (``quality-gates-toolkit`` engine / ``planner.eval.snapshot``):
     ``status`` is one of ``PASS`` / ``FAIL`` / ``NEEDS REVIEW`` and
     ``passed`` is ``True`` only for ``PASS`` (per ADR-0014 both ``FAIL``
     and ``NEEDS REVIEW`` are merge-blocking, hence not ``passed``).

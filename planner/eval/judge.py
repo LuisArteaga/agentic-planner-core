@@ -3,9 +3,10 @@
 Exposes :func:`judge` — the ``judge(diff, judge_type) -> BINEVALResult``
 interface demanded by issue #43 as the precursor to a shared
 ``agentic-judge-core`` library. It reuses the canonical system prompts and
-the ``<reasoning>``/``<findings>`` XML-tag parser from ``scripts/review.py``
-(single source of truth, DRY) but drives the LLM call through the eval
-suite's streaming OpenRouter client so that TTFT and cost are captured.
+the ``<reasoning>``/``<findings>`` XML-tag parser from
+:mod:`planner.eval.snapshot` (ADR-0022 judge-artifact snapshot) but drives
+the LLM call through the eval suite's streaming OpenRouter client so that
+TTFT and cost are captured.
 
 Only the four homogeneous binary PR judges (ADR-0008 fail-fast pipeline)
 share the ``judge(diff, judge_type)`` contract. ``evaluate_grade`` is a
@@ -23,11 +24,11 @@ from planner.config import resolve_model_config
 from planner.eval.models import BINEVALResult, JudgeMetrics
 from planner.eval.openrouter import stream_completion
 
-# Reuse the canonical prompts + parser from the PR-review pipeline so the
-# eval suite measures exactly the same judge the CI runs. This is the
-# transitional ``planner/eval/`` form explicitly permitted by issue #43; a
-# future ``agentic-judge-core`` extraction would move these into the library.
-from scripts.review import (  # noqa: E402
+# Use the snapshotted prompts + parser (ADR-0022) so the eval suite
+# measures exactly the judge artifacts its gold-standard fixtures were
+# annotated against. A future ``quality_gates_toolkit`` package consumption
+# (toolkit D-0017) will replace this snapshot import.
+from planner.eval.snapshot import (
     SYSTEM_PROMPT_ARCH,
     SYSTEM_PROMPT_SECURITY,
     SYSTEM_PROMPT_SYNTAX_LINT,
@@ -89,7 +90,8 @@ def judge(
 
     system_prompt = JUDGE_PROMPTS[judge_type]
     # The architecture judge is enriched with the repo's architectural
-    # context when a workspace is available (mirrors review.py).
+    # context when a workspace is available (mirrors the snapshot's
+    # load_architecture_context usage in the CI judge).
     if judge_type == "architecture" and workspace_dir:
         try:
             ctx = load_architecture_context(workspace_dir)
@@ -128,8 +130,9 @@ def judge(
             JudgeMetrics(),
         )
 
-    # Reuse the canonical parser from scripts.review.evaluate_response, which
-    # expects the full OpenRouter response body (choices[].message.content).
+    # Reuse the snapshotted parser from planner.eval.snapshot.evaluate_response,
+    # which expects the full OpenRouter response body
+    # (choices[].message.content).
     # The streaming client returns only the assembled content, so reconstruct
     # the minimal envelope the parser reads.
     response_body = json.dumps({"choices": [{"message": {"content": content}}]})

@@ -238,7 +238,7 @@ Their ordering matters: cheaper deterministic checks run first.
 | **Planning Judge** | Before publish (non-trivial, zero-tolerance) | Adversarial semantic audit of the refined issue. | [ADR-0019](./adr/0019-zero-tolerance-validation-addon.md) |
 | **HITL publish gate** | `publish_issue`, before the GitHub API call | Prompts for human confirmation per issue. See [below](#the-hitl-publish-gate). | [ADR-0020](./adr/0020-zero-trust-prompt-injection-defense.md) |
 | **Per-draft wall-clock budget** | Each subgraph invocation | A hard SIGALRM deadline (default `1800s`, env `REFINE_DRAFT_BUDGET_S`) interrupts an in-flight blocking LLM call. A timed-out draft is isolated like any per-draft failure. | [ADR-0021](./adr/0021-robuste-llm-timeout-durchsetzung.md) |
-| **LLM-Judge PR review** | CI, on pull requests (`scripts/review.py`) | Multi-stage binary PR judges (`syntax_lint`, `test_coverage`, `architecture`, `security`) whose FAIL/NEEDS-REVIEW verdicts are merge-blocking. | [ADR-0008](./adr/0008-multistage-llm-pr-judges.md), [ADR-0014](./adr/0014-llm-judge-merge-blocking.md), [ADR-0015](./adr/0015-hidden-verdict-block.md) |
+| **LLM-Judge PR review** | CI, on pull requests (`quality-gates-toolkit` composite) | Multi-stage binary PR judges (`syntax_lint`, `test_coverage`, `architecture`, `security`) whose FAIL/NEEDS-REVIEW verdicts are merge-blocking. Judge models resolve from `config/factory.json`. | [ADR-0008](./adr/0008-multistage-llm-pr-judges.md), [ADR-0014](./adr/0014-llm-judge-merge-blocking.md), [ADR-0015](./adr/0015-hidden-verdict-block.md), [ADR-0022](./adr/0022-consume-quality-gates-toolkit.md) |
 
 ---
 
@@ -265,8 +265,9 @@ hang nor crash. The same applies on `EOF` at the prompt.
 When the gate prompts, it prints the proposed issue (title + body) and a
 unified diff of the refinement, then asks `Publish this issue to GitHub? [y/N]`.
 
-> **Note:** `agent_logs/review.log` is written **only** by `scripts/review.py`
-> (the CI PR judges), never by the `refine` CLI. Do not use it to debug a
+> **Note:** `agent_logs/review.log` is written **only** by the CI PR judges
+> (the `quality-gates-toolkit` engine, run by the composite workflow), never
+> by the `refine` CLI. Do not use it to debug a
 > refine run. Refine-side security findings are written to a per-run Markdown
 > report under `.planner/reports/<repo>/`.
 
