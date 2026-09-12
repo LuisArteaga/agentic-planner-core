@@ -247,12 +247,14 @@ def test_load_architecture_context_unreadable_flat_adr_warns(tmp_path):
 def test_judge_adapter_uses_snapshot_prompts():
     # The eval suite must calibrate exactly the snapshotted judge prompts
     # (ADR-0022); a divergence here would silently invalidate the suite.
+    # Compare on observable content (==), not object identity, so any
+    # implementation that produces the canonical prompt text stays valid.
     from planner.eval.judge import JUDGE_PROMPTS
 
-    assert JUDGE_PROMPTS["syntax_lint"] is SYSTEM_PROMPT_SYNTAX_LINT
-    assert JUDGE_PROMPTS["test_coverage"] is SYSTEM_PROMPT_TEST_COVERAGE
-    assert JUDGE_PROMPTS["architecture"] is SYSTEM_PROMPT_ARCH
-    assert JUDGE_PROMPTS["security"] is SYSTEM_PROMPT_SECURITY
+    assert JUDGE_PROMPTS["syntax_lint"] == SYSTEM_PROMPT_SYNTAX_LINT
+    assert JUDGE_PROMPTS["test_coverage"] == SYSTEM_PROMPT_TEST_COVERAGE
+    assert JUDGE_PROMPTS["architecture"] == SYSTEM_PROMPT_ARCH
+    assert JUDGE_PROMPTS["security"] == SYSTEM_PROMPT_SECURITY
 
 
 def test_snapshot_prompts_are_non_empty_strings():
