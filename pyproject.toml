@@ -53,9 +53,3 @@ disable_error_code = ["call-arg", "dict-item", "assignment"]
 # stay in agreement.
 select = ["E4", "E7", "E9", "F"]
 
-[tool.coverage.run]
-omit = [
-    "planner/__main__.py",
-    "planner/cli_planning.py",
-]
-
