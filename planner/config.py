@@ -227,12 +227,10 @@ class AppConfig:
         # Parse and validate factory.json (ADR-0024). The personal routing
         # setup is untracked: when the default path is absent, startup skips
         # factory validation and model resolution falls back to the built-in
-        # defaults (``resolve_model_config``). Present files — and explicitly
-        # passed paths — still fail fast on missing or malformed content.
+        # defaults (``resolve_model_config``). The CWD-relative probe mirrors
+        # the sources fallback semantics; a file that IS present — or an
+        # explicitly passed path — still fails fast on malformed content.
         factory_path = pathlib.Path(factory_json_path)
-        if not factory_path.exists() and factory_json_path == DEFAULT_FACTORY_PATH:
-            project_root = pathlib.Path(__file__).resolve().parents[1]
-            factory_path = project_root / factory_json_path
         if factory_path.exists() or factory_json_path != DEFAULT_FACTORY_PATH:
             _load_factory_config(factory_json_path)
         else:
