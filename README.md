@@ -28,6 +28,13 @@ A master LangGraph orchestrator iterates over all Draft Issues, executing isolat
 
 ---
 
+## Documentation
+
+- **Architecture**: [`docs/architecture.md`](./docs/architecture.md) — the full end-to-end reference: phases, refinement graph, every CLI flag, and the safety/quality gates.
+- **Diagrams**: [`docs/diagrams/`](./docs/diagrams/README.md) — Mermaid views for [setup](./docs/diagrams/setup.md), the [usage process](./docs/diagrams/process.md), the [architecture overview](./docs/diagrams/architecture-overview.md), plus detailed views on [search grounding](./docs/diagrams/detailed-search-grounding.md), [PR judges](./docs/diagrams/detailed-judges.md), and [session persistence](./docs/diagrams/detailed-session-persistence.md). Each diagram lists the ADRs and files it is grounded in.
+
+---
+
 ## Setup & Configuration
 
 ### 1. Requirements
