@@ -222,6 +222,12 @@ __marimo__/
 .planner/
 .agent_logs/
 
+# Personal configuration (ADR-0024): the real routing setup stays local like
+# .env; the tracked *.example.* files document the shape and are the
+# fresh-clone fallback.
+config/factory.json
+config/sources.toml
+
 
 # Antigravity Agents
 .agents/

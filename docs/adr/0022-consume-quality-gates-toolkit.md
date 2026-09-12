@@ -100,7 +100,7 @@ Wir wählen **Option 3**:
    danach entfallen `scripts/review.py`, `scripts/review.sh`,
    `scripts/secret_scan.py` und `tests/test_review.py`.
 4. **Bleibt planner-eigen**: `scripts/telemetry.py`, `scripts/issue_schema.py`,
-   `eval.yml` (inkl. `workflow_call`-Konsum durch agentic-developer-core) und
+   `eval.yml` (inkl. `workflow_call`-Konsum durch das private Sibling-Projekt developer-core) und
    `issue-schema-enforcement.yml` sind unberührt.
 5. **Schichtung (grundsätzlich)**: Pre-Commit = schnelle, beratende Ebene für
    den KI-Commit-Loop; CI = verbindliche, gepinnte Gate-Ebene. Lokales `mypy`

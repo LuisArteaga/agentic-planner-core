@@ -8,7 +8,7 @@ from pathlib import Path
 
 import requests
 
-from planner.config import AppConfig
+from planner.config import AppConfig, DEFAULT_SOURCES_PATH
 from planner.state import AgentState
 from planner.refine_graph import graph
 from planner.telemetry import (
@@ -47,7 +47,7 @@ def main():
     )
     refine_parser.add_argument(
         "--config",
-        default="config/sources.toml",
+        default=DEFAULT_SOURCES_PATH,
         help="Path to sources.toml configuration",
     )
     refine_parser.add_argument(

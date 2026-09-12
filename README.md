@@ -1,5 +1,7 @@
 # Agentic Planner Core
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+
 **agentic-planner-core** is an autonomous planning and issue refinement orchestrator. It bridges the gap between high-level project goals and well-defined, researched, ADR-compliant GitHub issues.
 
 By separating the planning and refinement phases, it prevents context rot and isolates web searches to short-lived single-issue workflows.
@@ -111,6 +113,8 @@ Before running refinement, configure your search sources:
 ```bash
 cp config/sources.example.toml config/sources.toml
 ```
+This step is optional: without a personal `config/sources.toml`, the tracked example configuration is used automatically. The real config files (`config/sources.toml`, `config/factory.json`) are gitignored like `.env`, so your personal routing setup never leaves the machine.
+
 Define your allowed search domains/repositories and customize search engine parameters in `config/sources.toml`:
 ```toml
 strict = true
