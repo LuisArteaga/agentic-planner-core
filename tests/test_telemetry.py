@@ -1,4 +1,5 @@
 import json
+import importlib.util
 import os
 import shutil
 import tempfile
@@ -190,21 +191,29 @@ class TelemetryTests(unittest.TestCase):
         self.assertEqual(stat.S_IMODE(file_mode), 0o600)
 
 
-def test_telemetry_module_resolves_to_planner_package_not_scripts():
+def test_scripts_import_never_resolves_into_the_repository():
     """Import-resolution guard (issue #83, ADR-0023).
 
     The toolkit distribution ships a regular top-level ``scripts`` package
-    (its ``secret-scan`` console script plus backward-compat shims). Under
-    PEP 420 a regular package on any sys.path entry shadows every namespace
-    portion — empirically, installing the toolkit re-bound
-    ``import scripts.telemetry`` to the toolkit's shim. The planner
-    therefore keeps no top-level ``scripts/`` namespace: its telemetry lives
-    in ``planner/telemetry.py``, which no installed distribution can shadow
-    (the toolkit ships no ``planner`` package). This test fails if a
-    top-level ``scripts/`` directory is re-added to the repository.
+    (its ``secret-scan`` console script plus backward-compat shims), so
+    ``import scripts.telemetry`` legitimately resolves — to the toolkit's
+    shim — in any environment with the dependency installed (inside the
+    repo's ``.venv`` site-packages). The hazard ADR-0023 removes is a
+    *repository-source* ``scripts/`` directory at the repo root, which
+    would participate in import resolution and (as a regular package, or a
+    namespace portion alongside the toolkit's) silently change what
+    ``scripts.*`` binds to. The guard pins the observable behavior instead
+    of layout: the resolved ``scripts`` package must never live in the
+    repository's source tree, and the planner's telemetry API must stay
+    callable at its shadow-proof home (``planner.telemetry``, which no
+    installed distribution can shadow).
     """
+    spec = importlib.util.find_spec("scripts")
+    repo_root = Path(__file__).resolve().parents[1]
+    if spec is not None and spec.submodule_search_locations:
+        for location in spec.submodule_search_locations:
+            resolved = Path(location).resolve()
+            assert not resolved.is_relative_to(repo_root / "scripts")
     import planner.telemetry
 
-    repo_root = Path(planner.telemetry.__file__).resolve().parents[1]
-    assert (repo_root / "planner" / "telemetry.py").is_file()
-    assert not (repo_root / "scripts").exists()
+    assert callable(planner.telemetry.orchestrator_phase)

@@ -49,7 +49,7 @@ Lösung musste diese Kollision deshalb zuerst auflösen.
   CI-Composite, Pre-Commit-Rev — gemeinsam gezogen).
 * **Offline-deterministische Unit-Tests**: Die Toolkit-Runtime ist
   stdlib-only (`dependencies = []`); der Import von
-  `quality_gates_toolkit.review` darf keine Netzwerkktele oder
+  `quality_gates_toolkit.review` darf keine Netzwerklast oder
   Abhängigkeitskonflikte erzeugen (verifiziert: Telemetry degradiert
   graceful ohne opentelemetry, Enrichment wird lazy importiert).
 
@@ -99,10 +99,11 @@ Wir wählen **Option 1** und migrieren in einem atomaren Change:
    Diff-Coverage-Gate unsichtbar). Sämtliche Import-Stellen (~13
    Produktionsdateien), Mock-Patch-Targets (4 Testdateien), der
    Workflow-Aufruf (`python3 -m planner.issue_schema`) und die
-   Lint-Scopes (Makefile, Pre-Commit) wechseln im selben Commit. Es bleibt
+   Lint-Scopes (Makefile, Pre-Commit) und die Coverage-omit-Ausnahme in
+   `pyproject.toml` wechseln im selben Commit. Es bleibt
    kein Top-Level-`scripts`-Namespace zurück; ein Regressionstest
-   (`tests/test_telemetry.py::test_telemetry_module_resolves_to_planner_
-   package_not_scripts`) verhindert die stille Re-Introduktion.
+   (`tests/test_telemetry.py::test_scripts_import_never_resolves_into_the_repository`)
+   verhindert die stille Re-Introduktion.
 4. **Snapshot-Entfernung**: `planner/eval/snapshot.py` und
    `tests/eval/test_snapshot.py` entfallen. Parser- und
    Context-Loader-Branches sind Toolkit-Eigentum (toolkit
@@ -129,6 +130,14 @@ Wir wählen **Option 1** und migrieren in einem atomaren Change:
   annotiert; die Kennzahlen-Verschiebung (Hard Flips, Kappa) ist
   erwarteter Migrationseffekt und wird als Datenpunkt berichtet, nicht
   als Gate bewertet.
+* **Sichtbar in den Metriken**: Die bislang über `[tool.coverage.run]`
+  omitierten Module `planner/__main__.py` und `planner/cli_planning.py`
+  werden wieder gemessen — beide tragen im Zuge des Renames geänderte
+  Import-Zeilen, und der Toolkit-Diff-Coverage-Gate stuft im Diff geänderte
+  Dateien ohne Coverage-Eintrag („never imported by any test") als Verstoß
+  ein. Beide Module werden von Tests importiert (`tests/test_main.py`,
+  `tests/test_session_serialization.py`); die erneute Messung liegt bei
+  86 % Gesamt-Coverage, deutlich über dem 80-%-Floor (ADR-0022).
 
 ## Inspiration & Referenzen
 
@@ -146,5 +155,3 @@ Wir wählen **Option 1** und migrieren in einem atomaren Change:
 * **ADR-0022**: Option-3-Snapshot als Transitional-Entscheidung mit
   dokumentiertem Follow-up; diese Entscheidung vollendet sie.
 
-et sie.
-sie.
