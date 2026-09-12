@@ -22,7 +22,7 @@ from planner.zero_tolerance.llm_utils import (
     invoke_structured_with_retry,
 )
 from planner.zero_tolerance.models import ZeroToleranceConfig, ZeroToleranceViolation
-from scripts.telemetry import orchestrator_phase
+from planner.telemetry import orchestrator_phase
 
 logger = logging.getLogger("planner.zero_tolerance.intent_gate")
 

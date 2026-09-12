@@ -3,8 +3,9 @@ import os
 import shutil
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
-from scripts.telemetry import (
+from planner.telemetry import (
     get_agent_logs_dir,
     configure_otlp_endpoint,
     init_telemetry,
@@ -169,7 +170,7 @@ class TelemetryTests(unittest.TestCase):
 
         # Run under loop and phase context manager
         start_orchestrator_loop(issue_number=99)
-        from scripts.telemetry import orchestrator_phase
+        from planner.telemetry import orchestrator_phase
 
         with orchestrator_phase("ctx_mgr_phase"):
             pass
@@ -187,3 +188,23 @@ class TelemetryTests(unittest.TestCase):
         # Verify file permissions are 0o600
         file_mode = os.stat(log_file_path).st_mode
         self.assertEqual(stat.S_IMODE(file_mode), 0o600)
+
+
+def test_telemetry_module_resolves_to_planner_package_not_scripts():
+    """Import-resolution guard (issue #83, ADR-0023).
+
+    The toolkit distribution ships a regular top-level ``scripts`` package
+    (its ``secret-scan`` console script plus backward-compat shims). Under
+    PEP 420 a regular package on any sys.path entry shadows every namespace
+    portion — empirically, installing the toolkit re-bound
+    ``import scripts.telemetry`` to the toolkit's shim. The planner
+    therefore keeps no top-level ``scripts/`` namespace: its telemetry lives
+    in ``planner/telemetry.py``, which no installed distribution can shadow
+    (the toolkit ships no ``planner`` package). This test fails if a
+    top-level ``scripts/`` directory is re-added to the repository.
+    """
+    import planner.telemetry
+
+    repo_root = Path(planner.telemetry.__file__).resolve().parents[1]
+    assert (repo_root / "planner" / "telemetry.py").is_file()
+    assert not (repo_root / "scripts").exists()

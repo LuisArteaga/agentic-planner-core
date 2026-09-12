@@ -452,9 +452,9 @@ def test_run_grill_telemetry_disabled(temp_workspace):
         patch("planner.cli_planning.setup_planning_agent", return_value=mock_agent),
         patch("planner.cli_planning.run_interactive_console_loop") as mock_loop,
         patch.dict("os.environ", {}, clear=True),
-        patch("scripts.telemetry.init_telemetry") as mock_init,
-        patch("scripts.telemetry.start_orchestrator_loop") as mock_start,
-        patch("scripts.telemetry.end_orchestrator_loop") as mock_end,
+        patch("planner.telemetry.init_telemetry") as mock_init,
+        patch("planner.telemetry.start_orchestrator_loop") as mock_start,
+        patch("planner.telemetry.end_orchestrator_loop") as mock_end,
     ):
         from planner.cli_planning import run_grill
 
@@ -1012,9 +1012,9 @@ def test_main_refine_command():
         patch("sys.argv", ["planner", "refine", "--config", "test-sources.toml"]),
         patch("planner.__main__.AppConfig", return_value=mock_config),
         patch("planner.__main__.graph", mock_graph),
-        patch("scripts.telemetry.init_telemetry") as mock_init,
-        patch("scripts.telemetry.start_orchestrator_loop") as mock_start,
-        patch("scripts.telemetry.end_orchestrator_loop") as mock_end,
+        patch("planner.telemetry.init_telemetry") as mock_init,
+        patch("planner.telemetry.start_orchestrator_loop") as mock_start,
+        patch("planner.telemetry.end_orchestrator_loop") as mock_end,
         patch("planner.__main__.glob.glob", return_value=["draft1.md"]),
         patch("planner.__main__.Path.exists", return_value=True),
         patch("logging.basicConfig") as mock_logging_config,

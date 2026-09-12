@@ -2,11 +2,13 @@
 
 Exposes :func:`judge` — the ``judge(diff, judge_type) -> BINEVALResult``
 interface demanded by issue #43 as the precursor to a shared
-``agentic-judge-core`` library. It reuses the canonical system prompts and
-the ``<reasoning>``/``<findings>`` XML-tag parser from
-:mod:`planner.eval.snapshot` (ADR-0022 judge-artifact snapshot) but drives
-the LLM call through the eval suite's streaming OpenRouter client so that
-TTFT and cost are captured.
+``agentic-judge-core`` library. It reuses the canonical judge artifacts —
+the system prompts and the ``<reasoning>``/``<findings>`` XML-tag parser —
+directly from the toolkit's importable judge package
+``quality_gates_toolkit.review`` (toolkit D-0017, ADR-0022 follow-up), so
+the eval suite calibrates exactly the prompts and parser the CI judges run,
+and drives the LLM call through the eval suite's streaming OpenRouter client
+so that TTFT and cost are captured.
 
 Only the four homogeneous binary PR judges (ADR-0008 fail-fast pipeline)
 share the ``judge(diff, judge_type)`` contract. ``evaluate_grade`` is a
@@ -18,40 +20,27 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Dict, Optional
+from typing import Optional
+
+from quality_gates_toolkit.review import (
+    JUDGE_KEYS,
+    JUDGE_PROMPTS,
+    augment_judge_prompt,
+    evaluate_response,
+    load_architecture_context,
+)
 
 from planner.config import resolve_model_config
 from planner.eval.models import BINEVALResult, JudgeMetrics
 from planner.eval.openrouter import stream_completion
 
-# Use the snapshotted prompts + parser (ADR-0022) so the eval suite
-# measures exactly the judge artifacts its gold-standard fixtures were
-# annotated against. A future ``quality_gates_toolkit`` package consumption
-# (toolkit D-0017) will replace this snapshot import.
-from planner.eval.snapshot import (
-    SYSTEM_PROMPT_ARCH,
-    SYSTEM_PROMPT_SECURITY,
-    SYSTEM_PROMPT_SYNTAX_LINT,
-    SYSTEM_PROMPT_TEST_COVERAGE,
-    evaluate_response,
-    load_architecture_context,
-)
-
 # Verdict -> passed mapping mirrors ADR-0014: only PASS is "passed".
 _VERDICT_TO_PASSED = {"Pass": True}
 
 
-# Canonical order of the binary judges (ADR-0008 fail-fast pipeline).
-BINARY_JUDGE_TYPES = ["syntax_lint", "test_coverage", "architecture", "security"]
-
-# judge_type -> system prompt. The evaluate_grade placeholder fixture dir is
-# created for AC compliance but has no binary adapter here (ADR-0017).
-JUDGE_PROMPTS: Dict[str, str] = {
-    "syntax_lint": SYSTEM_PROMPT_SYNTAX_LINT,
-    "test_coverage": SYSTEM_PROMPT_TEST_COVERAGE,
-    "architecture": SYSTEM_PROMPT_ARCH,
-    "security": SYSTEM_PROMPT_SECURITY,
-}
+# Canonical order of the binary judges (ADR-0008 fail-fast pipeline), sourced
+# from the toolkit so the suite can never drift from the CI judge set.
+BINARY_JUDGE_TYPES = JUDGE_KEYS
 
 
 def judge(
@@ -88,19 +77,21 @@ def judge(
     options = cfg["options"]
     max_tokens = cfg.get("max_tokens")
 
-    system_prompt = JUDGE_PROMPTS[judge_type]
-    # The architecture judge is enriched with the repo's architectural
-    # context when a workspace is available (mirrors the snapshot's
-    # load_architecture_context usage in the CI judge).
+    # Mirror the CI judge's prompt construction (toolkit review.py): the
+    # composed JUDGE_PROMPTS entry (neutrality frame + judge prompt), then
+    # the toolkit's shared augmentation dispatch — called unguarded, exactly
+    # like the CI entrypoint. The loader is internally fail-soft (per-file
+    # errors degrade to warnings, missing context returns ""). The eval
+    # adapter has no deterministic py_compile fixture for its synthetic
+    # diffs, so syntax_result is None; the architecture judge receives the
+    # workspace context exactly as the CI judge would (context header and
+    # missing-context fallback included).
+    arch_context = ""
     if judge_type == "architecture" and workspace_dir:
-        try:
-            ctx = load_architecture_context(workspace_dir)
-            if ctx:
-                system_prompt = f"{system_prompt}\n\n{ctx}"
-        except Exception:
-            # Context loading must never break the eval; fail closed to the
-            # bare prompt.
-            pass
+        arch_context = load_architecture_context(workspace_dir)
+    system_prompt = augment_judge_prompt(
+        judge_type, JUDGE_PROMPTS[judge_type], None, arch_context
+    )
 
     messages = [
         {"role": "system", "content": system_prompt},
@@ -130,8 +121,8 @@ def judge(
             JudgeMetrics(),
         )
 
-    # Reuse the snapshotted parser from planner.eval.snapshot.evaluate_response,
-    # which expects the full OpenRouter response body
+    # Reuse the toolkit's parser (quality_gates_toolkit.review.
+    # evaluate_response), which expects the full OpenRouter response body
     # (choices[].message.content).
     # The streaming client returns only the assembled content, so reconstruct
     # the minimal envelope the parser reads.

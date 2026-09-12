@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from langchain_core.messages import SystemMessage, HumanMessage
 from opentelemetry import trace
 from planner.state import RefinementState
-from scripts.telemetry import orchestrator_phase
+from planner.telemetry import orchestrator_phase
 from planner.nodes.evaluate_grade import load_adrs
 from planner.config import get_llm, resolve_model_config
 from planner.utils import active_search_results, extract_finish_reason

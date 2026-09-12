@@ -25,7 +25,7 @@ from planner.eval.stats import (
     p95,
     verbosity_bias,
 )
-from scripts.telemetry import get_tracer
+from planner.telemetry import get_tracer
 
 logger = logging.getLogger("planner.eval.runner")
 

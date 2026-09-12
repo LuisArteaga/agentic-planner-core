@@ -21,11 +21,11 @@ repos:
       # advisory layer — the pinned CI mypy (2.3.1) is authoritative. Target
       # paths are supplied via args (toolkit README hook contract).
       - id: mypy
-        args: [planner, tests, scripts]
+        args: [planner, tests]
       # The toolkit hook runs `semgrep scan` in an isolated pinned env
       # (pass_filenames: false, always_run); scope the advisory scan to the
       # source tree like the previous local definition.
       - id: semgrep
-        args: ['--config=p/security-audit', '--jobs=0', '--skip-unknown-extensions', '--quiet', 'planner', 'tests', 'scripts']
+        args: ['--config=p/security-audit', '--jobs=0', '--skip-unknown-extensions', '--quiet', 'planner', 'tests']
       - id: pip-audit
         args: ["."]

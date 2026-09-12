@@ -31,7 +31,7 @@ jobs:
     # edits the issue body or title without revisiting this invariant.
     #
     # POLICY IS PURE PYTHON:
-    # All conditional enforcement logic lives in scripts/issue_schema.py
+    # All conditional enforcement logic lives in planner/issue_schema.py
     # (`decide_enforcement`) and is unit-tested in tests/test_issue_schema.py.
     # The shell below is a thin dispatcher: it collects inputs, runs the
     # validator, sources the emitted `ENFORCE_*` action script, and applies
@@ -72,7 +72,7 @@ jobs:
           HAS_INVALID: ${{ steps.issue.outputs.has_invalid }}
         run: |
           set +e
-          python3 scripts/issue_schema.py \
+          python3 -m planner.issue_schema \
             --template .github/ISSUE_TEMPLATE/task.yml \
             --body-file /tmp/issue_body.md \
             --issue-state "$ISSUE_STATE" \

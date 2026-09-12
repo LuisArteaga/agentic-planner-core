@@ -6,7 +6,7 @@ import logging
 from pathlib import Path
 from typing import Dict, Any
 from planner.state import RefinementState
-from scripts.telemetry import orchestrator_phase
+from planner.telemetry import orchestrator_phase
 from planner.config import AppConfig
 
 logger = logging.getLogger("planner.nodes.publish_issue")
