@@ -99,8 +99,16 @@ class RefinementNodesTests(unittest.TestCase):
         self.assertIn("github.com/langchain-ai/langgraph", output["allowed_domains"])
         self.assertIn("github.com/swe-agent/swe-agent", output["allowed_domains"])
 
+    @patch("planner.nodes.web_search.AppConfig")
     @patch("planner.nodes.web_search.get_llm")
-    def test_web_search_execution(self, mock_get_llm):
+    def test_web_search_execution(self, mock_get_llm, mock_config_class):
+        # Hermetic: the ambient/untracked sources config must not leak direct
+        # prefetch URLs into the aggregated results (ADR-0024 fresh clones
+        # fall back to the example config, which declares direct URLs).
+        mock_config = MagicMock()
+        mock_config.sources.urls = []
+        mock_config_class.return_value = mock_config
+
         mock_instance = MagicMock()
         mock_get_llm.return_value = mock_instance
 
@@ -168,8 +176,17 @@ class RefinementNodesTests(unittest.TestCase):
             ["github.com/langchain-ai/langgraph"],
         )
 
+    @patch("planner.nodes.web_search.AppConfig")
     @patch("planner.nodes.web_search.get_llm")
-    def test_web_search_execution_with_list_content(self, mock_get_llm):
+    def test_web_search_execution_with_list_content(
+        self, mock_get_llm, mock_config_class
+    ):
+        # Hermetic: no direct prefetch from the ambient sources config (see
+        # test_web_search_execution).
+        mock_config = MagicMock()
+        mock_config.sources.urls = []
+        mock_config_class.return_value = mock_config
+
         mock_instance = MagicMock()
         mock_get_llm.return_value = mock_instance
 
@@ -346,8 +363,17 @@ class RefinementNodesTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             web_search_node(state)
 
+    @patch("planner.nodes.web_search.AppConfig")
     @patch("planner.nodes.web_search.get_llm")
-    def test_web_search_execution_with_custom_params(self, mock_get_llm):
+    def test_web_search_execution_with_custom_params(
+        self, mock_get_llm, mock_config_class
+    ):
+        # Hermetic: no direct prefetch (and therefore no real network calls)
+        # from the ambient sources config (see test_web_search_execution).
+        mock_config = MagicMock()
+        mock_config.sources.urls = []
+        mock_config_class.return_value = mock_config
+
         mock_instance = MagicMock()
         mock_get_llm.return_value = mock_instance
 
