@@ -165,6 +165,102 @@ def test_factory_config_missing_file(clean_env):
     os.unlink(sources_temp)
 
 
+def test_sources_falls_back_to_example_on_fresh_clone(clean_env, caplog):
+    """ADR-0024: without the untracked personal sources.toml, the tracked
+    example configuration loads so a fresh clone starts cleanly."""
+    import logging
+
+    os.environ["OPENROUTER_API_KEY"] = "test-key"
+    os.environ["GH_PAT"] = "test-pat"
+    os.environ["GITHUB_REPOSITORY"] = "test/repo"
+
+    missing_default = create_temp_toml({"strict": False})
+    os.unlink(missing_default)
+
+    with caplog.at_level(logging.WARNING):
+        with patch("planner.config.DEFAULT_SOURCES_PATH", missing_default):
+            config = AppConfig(sources_toml_path=missing_default)
+
+    # The example file's content is the observable proof the fallback loaded.
+    assert config.sources.strict is True
+    assert "https://github.com/langchain-ai/langgraph" in config.sources.urls
+    assert "arxiv.org" in config.sources.domains
+    fallback_warnings = [
+        rec
+        for rec in caplog.records
+        if rec.name == "planner.config" and rec.levelno == logging.WARNING
+    ]
+    assert fallback_warnings
+
+
+def test_sources_missing_without_example_raises(clean_env):
+    """ADR-0024: with neither the default nor the example file present,
+    startup still fails loudly with the standard FileNotFoundError."""
+    os.environ["OPENROUTER_API_KEY"] = "test-key"
+    os.environ["GH_PAT"] = "test-pat"
+    os.environ["GITHUB_REPOSITORY"] = "test/repo"
+
+    missing_default = create_temp_toml({"strict": False})
+    os.unlink(missing_default)
+    missing_example = create_temp_toml({"strict": False})
+    os.unlink(missing_example)
+
+    with (
+        patch("planner.config.DEFAULT_SOURCES_PATH", missing_default),
+        patch("planner.config.EXAMPLE_SOURCES_PATH", missing_example),
+    ):
+        with pytest.raises(FileNotFoundError) as exc:
+            AppConfig(sources_toml_path=missing_default)
+    assert "Configuration file not found" in str(exc.value)
+
+
+def test_sources_invalid_toml_raises(clean_env):
+    """A malformed sources file fails loudly, regardless of fallback state."""
+    os.environ["OPENROUTER_API_KEY"] = "test-key"
+    os.environ["GH_PAT"] = "test-pat"
+    os.environ["GITHUB_REPOSITORY"] = "test/repo"
+
+    temp_file = tempfile.NamedTemporaryFile(
+        delete=False, suffix=".toml", mode="w", encoding="utf-8"
+    )
+    temp_file.write("this is not valid toml")
+    temp_file.close()
+
+    with pytest.raises(ValueError) as exc:
+        AppConfig(sources_toml_path=temp_file.name)
+    assert "Invalid TOML format" in str(exc.value)
+
+    os.unlink(temp_file.name)
+
+
+def test_factory_config_optional_on_fresh_clone(clean_env):
+    """ADR-0024: without the untracked personal factory.json, startup skips
+    factory validation and model resolution uses the built-in defaults."""
+    os.environ["OPENROUTER_API_KEY"] = "test-key"
+    os.environ["GH_PAT"] = "test-pat"
+    os.environ["GITHUB_REPOSITORY"] = "test/repo"
+
+    sources_temp = create_temp_toml({"strict": False})
+    missing_factory = create_temp_toml({"strict": False})
+    os.unlink(missing_factory)
+
+    with patch("planner.config.DEFAULT_FACTORY_PATH", missing_factory):
+        config = AppConfig(
+            sources_toml_path=sources_temp, factory_json_path=missing_factory
+        )
+    assert config is not None
+
+    # Model resolution survives without factory.json: the built-in defaults
+    # apply (the loader raising FileNotFoundError is the fresh-clone state).
+    from planner.config import resolve_model_config
+
+    with patch("planner.config._load_factory_config", side_effect=FileNotFoundError):
+        cfg = resolve_model_config("grill")
+    assert cfg["model"] == "z-ai/glm-5.2"
+
+    os.unlink(sources_temp)
+
+
 def test_resolve_model_config_overrides(clean_env):
     # Test resolve_model_config with env overrides
     os.environ["AGENT_MODEL"] = "env-agent-model"

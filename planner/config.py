@@ -32,6 +32,14 @@ DEFAULT_LLM_POOL_TIMEOUT = 30.0
 # the application layer (per-query / per-draft, ADR-0005).
 DEFAULT_LLM_MAX_RETRIES = 0
 
+# Config file locations (ADR-0024). The real routing setup is untracked
+# (gitignored like ``.env``); the tracked example files document the shape and
+# serve as the fresh-clone fallback for sources. The example factory documents
+# the shape only — its placeholder model ids are never resolved at runtime.
+DEFAULT_SOURCES_PATH = "config/sources.toml"
+EXAMPLE_SOURCES_PATH = "config/sources.example.toml"
+DEFAULT_FACTORY_PATH = "config/factory.json"
+
 
 def load_env_file(filepath: str = ".env") -> None:
     """Loads environment variables from a .env file (standard library only)."""
@@ -136,8 +144,8 @@ class AppConfig:
 
     def __init__(
         self,
-        sources_toml_path: str = "config/sources.toml",
-        factory_json_path: str = "config/factory.json",
+        sources_toml_path: str = DEFAULT_SOURCES_PATH,
+        factory_json_path: str = DEFAULT_FACTORY_PATH,
     ):
         # Load environment variables from .env if present
         load_env_file()
@@ -183,8 +191,22 @@ class AppConfig:
                 f"Missing required environment variable(s): {', '.join(missing)}"
             )
 
-        # Parse and validate sources.toml
+        # Parse and validate sources.toml (ADR-0024). The personal routing
+        # setup is untracked: when the default path is absent, fall back to
+        # the tracked example configuration so fresh clones start cleanly.
+        # Explicitly passed paths keep strict semantics (missing -> error).
         toml_path = pathlib.Path(sources_toml_path)
+        if not toml_path.exists() and sources_toml_path == DEFAULT_SOURCES_PATH:
+            example_path = pathlib.Path(EXAMPLE_SOURCES_PATH)
+            if example_path.exists():
+                logger.warning(
+                    "Sources configuration not found at '%s'; falling back to "
+                    "the tracked example configuration '%s'.",
+                    sources_toml_path,
+                    example_path,
+                )
+                toml_path = example_path
+
         if not toml_path.exists():
             raise FileNotFoundError(
                 f"Configuration file not found: {sources_toml_path}"
@@ -194,7 +216,7 @@ class AppConfig:
             with open(toml_path, "rb") as f:
                 data = tomllib.load(f)
         except Exception as e:
-            raise ValueError(f"Invalid TOML format in {sources_toml_path}: {e}")
+            raise ValueError(f"Invalid TOML format in {toml_path}: {e}")
 
         # Validate parsed data via Pydantic
         try:
@@ -202,8 +224,22 @@ class AppConfig:
         except Exception as e:
             raise ValueError(f"Configuration validation failed: {e}")
 
-        # Parse and validate factory.json
-        _load_factory_config(factory_json_path)
+        # Parse and validate factory.json (ADR-0024). The personal routing
+        # setup is untracked: when the default path is absent, startup skips
+        # factory validation and model resolution falls back to the built-in
+        # defaults (``resolve_model_config``). Present files — and explicitly
+        # passed paths — still fail fast on missing or malformed content.
+        factory_path = pathlib.Path(factory_json_path)
+        if not factory_path.exists() and factory_json_path == DEFAULT_FACTORY_PATH:
+            project_root = pathlib.Path(__file__).resolve().parents[1]
+            factory_path = project_root / factory_json_path
+        if factory_path.exists() or factory_json_path != DEFAULT_FACTORY_PATH:
+            _load_factory_config(factory_json_path)
+        else:
+            logger.info(
+                "Factory configuration not found (%s); using built-in model defaults.",
+                factory_json_path,
+            )
 
     def get_github_session(self) -> requests.Session:
         """Returns a requests.Session configured with a robust retry strategy and auth headers."""
@@ -282,7 +318,7 @@ class FactoryConfig(BaseModel):
 
 @functools.lru_cache(maxsize=1)
 def _load_factory_config(
-    filepath: str = "config/factory.json",
+    filepath: str = DEFAULT_FACTORY_PATH,
 ) -> FactoryConfig:
     """Loads and validates config/factory.json with caching."""
     path = pathlib.Path(filepath)

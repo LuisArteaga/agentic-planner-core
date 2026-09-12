@@ -35,5 +35,5 @@ Der Block ist im GitHub-Rendering unsichtbar und wird ausschließlich vom `parse
 
 ## Inspiration & References
 
-* Vorbild: `agentic-developer-core/scripts/review.py` (gleicher `<!-- llm-pr-review-verdicts -->`-Block).
+* Vorbild: das Review-Skript des privaten Sibling-Projekts (developer-core; gleicher `<!-- llm-pr-review-verdicts -->`-Block).
 * Umsetzung: `scripts/review.py:779` (`hidden_lines`), Parser `skills/pr-feedback-loop/scripts/parse_pr_verdicts.py`.

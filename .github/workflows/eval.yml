@@ -1,8 +1,9 @@
 name: LLM-Judge Eval Suite
 
 # Reusable regression-evaluation workflow for LLM judge model swaps (issue #43).
-# Triggered on config/factory.json changes and manually, and consumable via
-# workflow_call from agentic-developer-core.
+# Triggered manually and consumable via workflow_call from the private sibling
+# project (developer-core). Since ADR-0024 the personal factory config is
+# untracked, so the former push trigger on config/factory.json is gone.
 
 on:
   workflow_call:
@@ -27,11 +28,6 @@ on:
         description: "OpenRouter model id override (optional)"
         required: false
         default: ""
-  push:
-    branches: [main]
-    paths:
-      - "config/factory.json"
-
 permissions:
   contents: read
 

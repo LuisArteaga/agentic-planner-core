@@ -98,7 +98,7 @@ agentic-planner-core/
 ## 4. Configuration & Telemetry
 
 ### Telemetry (Langfuse via OTLP)
-* Fully adopts the OpenTelemetry (OTel) instrumentation framework implemented in `agentic-developer-core`.
+* Fully adopts the OpenTelemetry (OTel) instrumentation framework implemented in the private sibling project (developer-core).
 * Registers the OTel TracerProvider. Spans are created natively for the `refinement_loop` and each active node (`analyze_sources`, `web_search`, `evaluate_grade`, etc.).
 * Exporting is routed to Langfuse via OTLP integration using the standard `OTEL_EXPORTER_OTLP_ENDPOINT`.
 * Traces are logged locally to `.agent_logs/otel_traces_<date>.jsonl` for crash resilience, exporting at the end of execution.

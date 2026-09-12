@@ -24,5 +24,5 @@ Sowohl `FAIL` als auch `NEEDS REVIEW` blockieren den Merge. `review.py` setzt `o
 
 ## Inspiration & References
 
-* Vorbild: `agentic-developer-core` (gleiche Judge-Architektur und Merge-Blocking-Semantik).
+* Vorbild: das private Sibling-Projekt (developer-core; gleiche Judge-Architektur und Merge-Blocking-Semantik).
 * Umsetzung: `scripts/review.py:788` (`overall_failed`), `scripts/review.py:312` (`submit_github_review` mit `request-changes`).
