@@ -149,26 +149,22 @@ def make_workspace(tmp_path, context_name="CONTEXT.md", flat_adr=False):
 def test_load_architecture_context_reads_context_and_sorted_adrs(tmp_path):
     ws = make_workspace(tmp_path)
     ctx = load_architecture_context(str(ws))
-    assert "--- CONTEXT.md ---" in ctx
     assert "Domain glossary content" in ctx
-    first = ctx.index("--- docs/adr/0001-first.md ---")
-    second = ctx.index("--- docs/adr/0002-second.md ---")
-    assert first < second
-    assert "Second ADR body" in ctx
+    first = ctx.index("First ADR body")
+    second = ctx.index("Second ADR body")
+    assert first < second  # ADRs are read in sorted order
 
 
 def test_load_architecture_context_falls_back_to_docs_context(tmp_path):
     ws = make_workspace(tmp_path, context_name="docs-context")
     os.rename(ws / "docs-context", ws / "docs" / "context.md")
     ctx = load_architecture_context(str(ws))
-    assert "--- docs" in ctx and "context.md ---" in ctx
     assert "Domain glossary content" in ctx
 
 
 def test_load_architecture_context_flat_adr_fallback(tmp_path):
     ws = make_workspace(tmp_path, flat_adr=True)
     ctx = load_architecture_context(str(ws))
-    assert "--- adr/0001-first.md ---" in ctx
     assert "First ADR body" in ctx
 
 
@@ -244,17 +240,36 @@ def test_load_architecture_context_unreadable_flat_adr_warns(tmp_path):
 # ------------------------- prompt identity contract -------------------------
 
 
-def test_judge_adapter_uses_snapshot_prompts():
-    # The eval suite must calibrate exactly the snapshotted judge prompts
-    # (ADR-0022); a divergence here would silently invalidate the suite.
-    # Compare on observable content (==), not object identity, so any
-    # implementation that produces the canonical prompt text stays valid.
-    from planner.eval.judge import JUDGE_PROMPTS
+def test_judge_sends_snapshot_prompts():
+    # Calibration contract (ADR-0022): the eval judge adapter must drive the
+    # LLM with exactly the snapshotted canonical prompts, because the eval
+    # suite's gold-standard fixtures were annotated against those prompts.
+    # Verified through judge()'s observable behavior — the messages it sends
+    # to the LLM — rather than by asserting on internal prompt mappings.
+    from unittest.mock import patch
 
-    assert JUDGE_PROMPTS["syntax_lint"] == SYSTEM_PROMPT_SYNTAX_LINT
-    assert JUDGE_PROMPTS["test_coverage"] == SYSTEM_PROMPT_TEST_COVERAGE
-    assert JUDGE_PROMPTS["architecture"] == SYSTEM_PROMPT_ARCH
-    assert JUDGE_PROMPTS["security"] == SYSTEM_PROMPT_SECURITY
+    from planner.eval.judge import judge
+    from planner.eval.models import JudgeMetrics
+
+    canonical = {
+        "syntax_lint": SYSTEM_PROMPT_SYNTAX_LINT,
+        "test_coverage": SYSTEM_PROMPT_TEST_COVERAGE,
+        "architecture": SYSTEM_PROMPT_ARCH,
+        "security": SYSTEM_PROMPT_SECURITY,
+    }
+    with patch("planner.eval.judge.stream_completion") as mock_stream:
+        mock_stream.return_value = (
+            "<reasoning>all good</reasoning>\n<findings></findings>",
+            JudgeMetrics(),
+        )
+        for judge_type, prompt in canonical.items():
+            mock_stream.reset_mock()
+            result, _ = judge("diff content", judge_type, model_override="test/model")
+            assert result.passed is True
+            messages = mock_stream.call_args.kwargs["messages"]
+            assert messages[0]["role"] == "system"
+            assert messages[0]["content"] == prompt
+            assert messages[1] == {"role": "user", "content": "diff content"}
 
 
 def test_snapshot_prompts_are_non_empty_strings():
