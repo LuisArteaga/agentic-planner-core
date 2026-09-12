@@ -1,10 +1,10 @@
 # Quality gates — fast ADVISORY layer for the agent commit loop (ADR-0022).
 # The binding, toolkit-pinned gate layer is CI
-# (.github/workflows/pr-checks.yml, composite @v1.6.0); the pinned CI mypy
-# is authoritative (toolkit D-0012), the `mypy` hook below runs advisory in
-# the consumer environment. The toolkit ships no ruff hook — the astral
-# rev is consumer-owned and kept in lockstep with the toolkit-pinned CI
-# ruff (0.16.6 at toolkit v1.6.0).
+# (.github/workflows/pr-checks.yml, python-checks composite @v1.7.0); the
+# pinned CI mypy is authoritative (toolkit D-0012), the `mypy` hook below
+# runs advisory in the consumer environment. The toolkit ships no ruff
+# hook — the astral rev is consumer-owned and kept in lockstep with the
+# toolkit-pinned CI ruff (0.16.6; unchanged at toolkit v1.7.0).
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.16.6
@@ -14,7 +14,7 @@ repos:
       - id: ruff-format
 
   - repo: https://github.com/LuisArteaga/quality-gates-toolkit
-    rev: v1.6.0
+    rev: v1.7.0
     hooks:
       - id: secret-scan
       # Consumer-owned mypy from this project's environment (toolkit D-0016):

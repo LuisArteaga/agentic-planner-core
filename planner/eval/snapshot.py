@@ -2,7 +2,8 @@
 
 The eval suite calibrates the CI PR judges against exactly the artifacts
 those judges use. Since the CI judges come from the quality-gates-toolkit
-composite (v1.6.0, ADR-0022), the artifacts the suite needs live here as a
+composite (python-checks entry point, v1.7.0 after the ADR-0022 retarget),
+the artifacts the suite needs live here as a
 verbatim snapshot of the judge implementation as of that migration:
 
 - the four binary-judge system prompts (``SYSTEM_PROMPT_*``),
@@ -10,7 +11,7 @@ verbatim snapshot of the judge implementation as of that migration:
   (``evaluate_response`` plus its ``parse_xml_tags`` helper),
 - the architecture-context loader (``load_architecture_context``).
 
-DRIFT PIN — quality-gates-toolkit v1.6.0 (ADR-0022, Option 3): the CI
+DRIFT PIN — quality-gates-toolkit v1.7.0 (ADR-0022, Option 3): the CI
 judges run the toolkit engine at that ref, while this snapshot preserves
 the pre-migration judge artifacts, which had already diverged from the
 toolkit (~2000-line drift, including the Data-Vault naming criterion in

@@ -1,10 +1,13 @@
 name: PR checks
 
-# Composite quality gates from quality-gates-toolkit v1.6.0 (ADR-0022).
-# The toolkit owns the toolchain pins (ruff 0.16.6, mypy 2.3.1, semgrep
-# 1.177.0, pip-audit 2.10.1) and the gate ordering (toolkit D-0001:
-# deterministic gates before the LLM judges). Judge models resolve solely
-# from `config/factory.json` (`ci_cd_pr_judges`); `vars.REVIEW_MODEL` and
+# Composite quality gates from quality-gates-toolkit v1.7.0 (ADR-0022,
+# retargeted v1.6.0 -> v1.7.0): the per-language `python-checks.yml`
+# composite (toolkit D-0020) gives this Python-only repository one-call
+# ergonomics with zero Skipped entries for the JS gates. The toolkit owns
+# the toolchain pins (ruff 0.16.6, mypy 2.3.1, semgrep 1.177.0, pip-audit
+# 2.10.1) and the gate ordering (toolkit D-0001: deterministic gates
+# before the LLM judges). Judge models resolve solely from
+# `config/factory.json` (`ci_cd_pr_judges`); `vars.REVIEW_MODEL` and
 # env overrides are gone (documented exceptions only).
 #
 # On workflow_dispatch runs the LLM-review job shows as skipped by design
@@ -26,7 +29,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
-    uses: LuisArteaga/quality-gates-toolkit/.github/workflows/pr-checks.yml@v1.6.0
+    uses: LuisArteaga/quality-gates-toolkit/.github/workflows/python-checks.yml@v1.7.0
     with:
       python-version: "3.12"
       # Deterministic gates: lint/typecheck/semgrep over the source tree,
@@ -45,7 +48,7 @@ jobs:
       enable-diff-gate: true
       # LLM judges read config/factory.json (toolkit default config-path).
       enable-llm-review: true
-      toolkit-ref: v1.6.0
+      toolkit-ref: v1.7.0
     secrets:
       openrouter-api-key: ${{ secrets.OPENROUTER_API_KEY }}
       judge-token: ${{ secrets.GH_PAT }}
