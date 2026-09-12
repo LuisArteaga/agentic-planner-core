@@ -16,7 +16,8 @@ class BINEVALResult(BaseModel):
     """The outcome of a single binary judge invocation.
 
     Mirrors the verdict semantics of the CI PR judges
-    (``quality-gates-toolkit`` engine / ``planner.eval.snapshot``):
+    (``quality_gates_toolkit.review``, the toolkit's importable judge
+    package):
     ``status`` is one of ``PASS`` / ``FAIL`` / ``NEEDS REVIEW`` and
     ``passed`` is ``True`` only for ``PASS`` (per ADR-0014 both ``FAIL``
     and ``NEEDS REVIEW`` are merge-blocking, hence not ``passed``).

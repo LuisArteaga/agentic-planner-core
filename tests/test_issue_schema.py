@@ -12,7 +12,7 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from scripts.issue_schema import (  # noqa: E402
+from planner.issue_schema import (  # noqa: E402
     build_rejection_comment,
     decide_enforcement,
     parse_issue_form_template,
@@ -23,7 +23,7 @@ from scripts.issue_schema import (  # noqa: E402
 
 REPO_ROOT = Path(project_root)
 TEMPLATE = REPO_ROOT / ".github" / "ISSUE_TEMPLATE" / "task.yml"
-SCRIPT = REPO_ROOT / "scripts" / "issue_schema.py"
+SCRIPT = REPO_ROOT / "planner" / "issue_schema.py"
 
 # The required headers the committed template declares. This is also a drift
 # guard: if task.yml changes its required fields, this test fails loudly so the

@@ -33,9 +33,9 @@ def _make_fake_result():
 @patch("planner.eval.report.write_summary", return_value=None)
 @patch("planner.eval.report.write_results_json")
 @patch("planner.eval.runner.run_eval", return_value=_make_fake_result())
-@patch("scripts.telemetry.end_orchestrator_loop")
-@patch("scripts.telemetry.start_orchestrator_loop")
-@patch("scripts.telemetry.init_telemetry")
+@patch("planner.telemetry.end_orchestrator_loop")
+@patch("planner.telemetry.start_orchestrator_loop")
+@patch("planner.telemetry.init_telemetry")
 def test_eval_cli_success(
     mock_init,
     mock_start,
@@ -72,9 +72,9 @@ def test_eval_cli_success(
 @patch("planner.eval.report.write_summary", return_value=None)
 @patch("planner.eval.report.write_results_json")
 @patch("planner.eval.runner.run_eval", side_effect=RuntimeError("boom"))
-@patch("scripts.telemetry.end_orchestrator_loop")
-@patch("scripts.telemetry.start_orchestrator_loop")
-@patch("scripts.telemetry.init_telemetry")
+@patch("planner.telemetry.end_orchestrator_loop")
+@patch("planner.telemetry.start_orchestrator_loop")
+@patch("planner.telemetry.init_telemetry")
 def test_eval_cli_error_exit_code(
     mock_init,
     mock_start,
@@ -117,9 +117,9 @@ def test_eval_cli_missing_judge_arg_exits_nonzero(monkeypatch):
 @patch("planner.eval.report.write_summary", return_value=None)
 @patch("planner.eval.report.write_results_json")
 @patch("planner.eval.runner.run_eval", return_value=_make_fake_result())
-@patch("scripts.telemetry.end_orchestrator_loop")
-@patch("scripts.telemetry.start_orchestrator_loop")
-@patch("scripts.telemetry.init_telemetry")
+@patch("planner.telemetry.end_orchestrator_loop")
+@patch("planner.telemetry.start_orchestrator_loop")
+@patch("planner.telemetry.init_telemetry")
 def test_eval_cli_model_override_forwarded(
     mock_init,
     mock_start,

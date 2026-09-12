@@ -122,6 +122,15 @@ Wir wählen **Option 3**:
   `mypy` bleibt über den Toolkit-Hook (v1.7.0, D-0016) beratend und
   ungepinnt — maßgeblich ist der gepinnte CI-`mypy`.
 
+### Follow-up-Status
+
+Der hier dokumentierte Snapshot war ausdrücklich transitional. Das
+dokumentierte Follow-up ist mit ADR-0023 (issue #83) umgesetzt: der Snapshot
+wurde durch die importierbare `quality_gates_toolkit`-Judge-Paket-API
+(toolkit D-0017) ersetzt und die damit verbundene `scripts`-Namespace-
+Kollision planner-seitig aufgelöst. Die Negativ-Folge „der Snapshot driftet"
+ist damit geschlossen.
+
 ## Inspiration & Referenzen
 
 * **quality-gates-toolkit README (v1.4.0)**: Komposit-Workflows, Pin-Disziplin

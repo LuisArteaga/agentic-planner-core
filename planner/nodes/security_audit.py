@@ -34,7 +34,7 @@ from pydantic import BaseModel, Field
 
 from planner.state import RefinementState
 from planner.utils import active_search_results, is_blacklisted, source_keys
-from scripts.telemetry import orchestrator_phase
+from planner.telemetry import orchestrator_phase
 
 logger = logging.getLogger("planner.nodes.security_audit")
 

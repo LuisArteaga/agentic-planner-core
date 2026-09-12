@@ -3,7 +3,7 @@ import logging
 from typing import Dict, Any
 from langchain_core.messages import SystemMessage, HumanMessage
 from planner.state import RefinementState
-from scripts.telemetry import orchestrator_phase
+from planner.telemetry import orchestrator_phase
 from planner.config import get_llm
 
 

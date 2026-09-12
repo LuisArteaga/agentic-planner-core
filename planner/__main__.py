@@ -11,7 +11,7 @@ import requests
 from planner.config import AppConfig
 from planner.state import AgentState
 from planner.refine_graph import graph
-from scripts.telemetry import (
+from planner.telemetry import (
     orchestrator_phase,
 )
 
@@ -145,7 +145,7 @@ def main():
         elif args.command == "draft":
             run_draft(config)
     elif args.command == "refine":
-        from scripts.telemetry import (
+        from planner.telemetry import (
             init_telemetry,
             start_orchestrator_loop,
             end_orchestrator_loop,
@@ -395,14 +395,14 @@ def main():
             print(f"Error: {e}", file=sys.stderr)
             exit_code = 1
         finally:
-            from scripts.telemetry import end_orchestrator_loop
+            from planner.telemetry import end_orchestrator_loop
 
             end_orchestrator_loop(exit_code=exit_code)
 
         if exit_code != 0:
             sys.exit(exit_code)
     elif args.command == "eval":
-        from scripts.telemetry import (
+        from planner.telemetry import (
             init_telemetry,
             start_orchestrator_loop,
             end_orchestrator_loop,

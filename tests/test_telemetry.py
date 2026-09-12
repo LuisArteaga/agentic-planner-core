@@ -1,10 +1,12 @@
 import json
+import importlib.util
 import os
 import shutil
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
-from scripts.telemetry import (
+from planner.telemetry import (
     get_agent_logs_dir,
     configure_otlp_endpoint,
     init_telemetry,
@@ -169,7 +171,7 @@ class TelemetryTests(unittest.TestCase):
 
         # Run under loop and phase context manager
         start_orchestrator_loop(issue_number=99)
-        from scripts.telemetry import orchestrator_phase
+        from planner.telemetry import orchestrator_phase
 
         with orchestrator_phase("ctx_mgr_phase"):
             pass
@@ -187,3 +189,31 @@ class TelemetryTests(unittest.TestCase):
         # Verify file permissions are 0o600
         file_mode = os.stat(log_file_path).st_mode
         self.assertEqual(stat.S_IMODE(file_mode), 0o600)
+
+
+def test_scripts_import_never_resolves_into_the_repository():
+    """Import-resolution guard (issue #83, ADR-0023).
+
+    The toolkit distribution ships a regular top-level ``scripts`` package
+    (its ``secret-scan`` console script plus backward-compat shims), so
+    ``import scripts.telemetry`` legitimately resolves — to the toolkit's
+    shim — in any environment with the dependency installed (inside the
+    repo's ``.venv`` site-packages). The hazard ADR-0023 removes is a
+    *repository-source* ``scripts/`` directory at the repo root, which
+    would participate in import resolution and (as a regular package, or a
+    namespace portion alongside the toolkit's) silently change what
+    ``scripts.*`` binds to. The guard pins the observable behavior instead
+    of layout: the resolved ``scripts`` package must never live in the
+    repository's source tree, and the planner's telemetry API must stay
+    callable at its shadow-proof home (``planner.telemetry``, which no
+    installed distribution can shadow).
+    """
+    spec = importlib.util.find_spec("scripts")
+    repo_root = Path(__file__).resolve().parents[1]
+    if spec is not None and spec.submodule_search_locations:
+        for location in spec.submodule_search_locations:
+            resolved = Path(location).resolve()
+            assert not resolved.is_relative_to(repo_root / "scripts")
+    import planner.telemetry
+
+    assert callable(planner.telemetry.orchestrator_phase)

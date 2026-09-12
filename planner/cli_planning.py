@@ -22,7 +22,7 @@ from planner.tools.research import (
     create_github_list_issues_tool,
     create_github_get_releases_tool,
 )
-from scripts.telemetry import (
+from planner.telemetry import (
     init_telemetry,
     start_orchestrator_loop,
     end_orchestrator_loop,

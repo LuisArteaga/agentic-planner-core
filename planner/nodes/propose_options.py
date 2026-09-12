@@ -4,7 +4,7 @@ from typing import Dict, Any
 from langchain_core.messages import SystemMessage, HumanMessage
 from planner.state import RefinementState
 from planner.utils import active_search_results, extract_json_block
-from scripts.telemetry import orchestrator_phase
+from planner.telemetry import orchestrator_phase
 from planner.config import get_llm
 
 logger = logging.getLogger("planner.nodes.propose_options")

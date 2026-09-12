@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 from langchain_core.messages import SystemMessage, HumanMessage
 from planner.state import RefinementState
 from planner.utils import extract_finish_reason
-from scripts.telemetry import orchestrator_phase
+from planner.telemetry import orchestrator_phase
 from planner.config import get_llm
 
 

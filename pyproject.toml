@@ -13,6 +13,11 @@ dependencies = [
     "opentelemetry-sdk>=1.20.0",
     "opentelemetry-exporter-otlp-proto-http>=1.20.0",
     "deepagents>=0.6.12",
+    # Judge-engine source of truth (toolkit D-0017, ADR-0022 follow-up).
+    # Pin discipline: the tag here is bumped in lockstep with the
+    # `toolkit-ref` pin sites in .github/workflows/pr-checks.yml and
+    # .pre-commit-config.yaml — one toolkit release train, one ref.
+    "quality-gates-toolkit @ git+https://github.com/LuisArteaga/quality-gates-toolkit@v1.7.0",
 ]
 
 [project.optional-dependencies]
@@ -47,10 +52,4 @@ disable_error_code = ["call-arg", "dict-item", "assignment"]
 # The toolkit-pinned CI ruff (0.16.6) reads this config, so local and CI
 # stay in agreement.
 select = ["E4", "E7", "E9", "F"]
-
-[tool.coverage.run]
-omit = [
-    "planner/__main__.py",
-    "planner/cli_planning.py",
-]
 

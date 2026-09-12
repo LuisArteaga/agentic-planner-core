@@ -33,8 +33,10 @@ jobs:
     with:
       python-version: "3.12"
       # Deterministic gates: lint/typecheck/semgrep over the source tree,
-      # coverage measured on the planner package only.
-      lint-paths: "planner tests scripts"
+      # coverage measured on the planner package only. No top-level
+      # `scripts` namespace exists since ADR-0023 (toolkit D-0017
+      # follow-up): telemetry/issue_schema live in planner/.
+      lint-paths: "planner tests"
       cov-paths: "planner"
       coverage-floor: 80
       # All deterministic gates on; diff-coverage gate enforces 100%

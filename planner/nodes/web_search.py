@@ -2,7 +2,7 @@ import logging
 from typing import Dict, Any, List, Tuple
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from planner.state import RefinementState
-from scripts.telemetry import orchestrator_phase
+from planner.telemetry import orchestrator_phase
 from planner.config import AppConfig, get_llm
 from planner.tools.research import fetch_allowed_url
 from planner.utils import active_search_results, is_blacklisted
